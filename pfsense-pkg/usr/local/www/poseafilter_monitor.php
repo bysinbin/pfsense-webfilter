@@ -22,6 +22,13 @@ $total_b = $stats['total_blocked'] ?? 0;
 $total_p = $stats['total_passed'] ?? 0;
 $block_rate = ($total_q > 0) ? round(($total_b / $total_q) * 100, 1) : 0;
 
+/* Read AD SSO Users mapping */
+$ad_users = [];
+$ad_user_file = POSEAFILTER_CONF_DIR . '/ad_users.json';
+if (file_exists($ad_user_file)) {
+    $ad_users = json_decode(file_get_contents($ad_user_file), true) ?: [];
+}
+
 /* Read last 100 lines of filter.log */
 $log_lines = [];
 $log_file = POSEAFILTER_LOG_DIR . '/filter.log';
@@ -77,7 +84,7 @@ if (file_exists($log_file)) {
                 <tr>
                     <th style="width: 170px;"><?=gettext("Timestamp")?></th>
                     <th style="width: 90px;"><?=gettext("Type")?></th>
-                    <th style="width: 130px;"><?=gettext("Client IP")?></th>
+                    <th style="width: 150px;"><?=gettext("Client IP / AD User")?></th>
                     <th><?=gettext("Queried Domain")?></th>
                     <th style="width: 100px;"><?=gettext("Action")?></th>
                     <th><?=gettext("Policy Reason")?></th>
@@ -101,11 +108,21 @@ if (file_exists($log_file)) {
                             if ($act === "sinkhole" || $act === "block") $badge = "label-danger";
                             else if ($act === "pass") $badge = "label-success";
                             else if ($act === "drop") $badge = "label-warning";
+
+                            $user_badge = "";
+                            if (!empty($ad_users[$ip]['username'])) {
+                                $u_info = $ad_users[$ip];
+                                $u_name = htmlspecialchars($u_info['username']);
+                                $is_admin = !empty($u_info['is_admin']);
+                                $u_color = $is_admin ? "text-warning" : "text-primary";
+                                $u_icon = $is_admin ? "fa-user-shield" : "fa-user";
+                                $user_badge = "<br/><small class='{$u_color}'><i class='fa-solid {$u_icon}'></i> {$u_name}</small>";
+                            }
                     ?>
                         <tr>
                             <td><small><?=htmlspecialchars($ts)?></small></td>
                             <td><span class="label label-info"><?=htmlspecialchars($type)?></span></td>
-                            <td><code><?=htmlspecialchars($ip)?></code></td>
+                            <td><code><?=htmlspecialchars($ip)?></code><?=$user_badge?></td>
                             <td><strong><?=htmlspecialchars($dom)?></strong></td>
                             <td><span class="label <?=$badge?>"><?=htmlspecialchars(strtoupper($act))?></span></td>
                             <td><small><?=htmlspecialchars($rsn)?></small></td>
