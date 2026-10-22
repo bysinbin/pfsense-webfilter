@@ -30,6 +30,10 @@
             <url>/poseafilter_monitor.php</url>
         </tab>
         <tab>
+            <text>Engelleme Sayfası (HTML)</text>
+            <url>/poseafilter_blockpage.php</url>
+        </tab>
+        <tab>
             <text>Suite Yedek &amp; Bildirim</text>
             <url>/posea_suite_backup.php</url>
         </tab>
@@ -113,21 +117,28 @@
             <type>checkbox</type>
         </field>
         <field>
-            <name>Block Page Settings</name>
+            <name>Kurumsal Engelleme Sayfası &amp; Özel HTML (Block Page)</name>
             <type>listtopic</type>
         </field>
         <field>
-            <fielddescr>Enable Branded Block Page</fielddescr>
+            <fielddescr>Engelleme Sayfasını Etkinleştir</fielddescr>
             <fieldname>enable_block_page</fieldname>
-            <description>Redirect blocked HTTP requests to the Posea branded corporate block page instead of 0.0.0.0 connection refused.</description>
+            <description>Engellenen HTTP isteklerinde 0.0.0.0 bağlantı hatası vermek yerine tarayıcıda doğrudan engelleme sayfasını gösterir.</description>
             <type>checkbox</type>
+            <default_value>on</default_value>
         </field>
         <field>
-            <fielddescr>Block Page Host IP</fielddescr>
+            <fielddescr>Özel HTML Tasarımı</fielddescr>
+            <fieldname>custom_block_html</fieldname>
+            <description>Engellenen kullanıcılara gösterilecek özel HTML kodunuzu buraya girebilirsiniz. Boş bırakılırsa Posea kurumsal şablonu kullanılır. Şablon değişkenleri: {DOMAIN}, {CLIENT_IP}, {USER}, {REASON}, {TIME}, {GATEWAY}. Gelişmiş canlı editör ve önizleme için 'Engelleme Sayfası (HTML)' sekmesini kullanabilirsiniz.</description>
+            <type>textarea</type>
+            <rows>8</rows>
+        </field>
+        <field>
+            <fielddescr>Engelleme Sayfası Sunucu IP (Opsiyonel)</fielddescr>
             <fieldname>block_page_ip</fieldname>
-            <description>The IP address where the block page web server is listening (e.g. 192.168.2.1).</description>
+            <description>Varsayılan olarak boş bırakınız (pfSense LAN IP adresi otomatik kullanılır). Harici bir engelleme sunucunuz varsa IP belirtebilirsiniz.</description>
             <type>input</type>
-            <default_value>192.168.2.1</default_value>
         </field>
         <field>
             <name>Tehdit Bildirim ve Alarm Ayarları (Telegram)</name>

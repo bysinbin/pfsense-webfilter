@@ -99,8 +99,19 @@ function poseafilter_resync() {
         "enable_safesearch" => isset($pconfig['enable_safesearch']),
         "enable_youtube_restricted" => isset($pconfig['enable_youtube_restricted']),
         "enable_block_page" => isset($pconfig['enable_block_page']),
-        "block_page_ip" => !empty($pconfig['block_page_ip']) ? $pconfig['block_page_ip'] : "192.168.2.1"
+        "block_page_ip" => !empty($pconfig['block_page_ip']) ? $pconfig['block_page_ip'] : ($config['interfaces']['lan']['ipaddr'] ?? "192.168.2.1")
     ];
+
+    // Sync custom block HTML if set in XML form
+    if (isset($pconfig['custom_block_html']) && trim($pconfig['custom_block_html']) !== '') {
+        @file_put_contents('/conf/poseafilter_block_custom.html', $pconfig['custom_block_html']);
+        @file_put_contents('/var/etc/poseafilter/block_custom.html', $pconfig['custom_block_html']);
+    }
+
+    // Configure nginx on port 80 for direct block page serving (no IP/448 redirect)
+    if (!empty($cfg['enable_block_page'])) {
+        poseafilter_configure_nginx_port80();
+    }
 
     file_put_contents(POSEAFILTER_CONF_DIR . '/config.json', json_encode($cfg, JSON_PRETTY_PRINT));
 
@@ -197,4 +208,25 @@ function poseafilter_get_stats() {
         "total_passed" => 0,
         "active_rules" => 0
     ];
+}
+
+function poseafilter_configure_nginx_port80() {
+    $conf_path = '/var/etc/nginx-webConfigurator.conf';
+    if (!file_exists($conf_path)) return;
+
+    $conf = file_get_contents($conf_path);
+    if (strpos($conf, 'poseafilter_block.php') !== false) return; // Already configured
+
+    $old_server = "server {\n\t\tlisten 80;\n\t\tlisten [::]:80;\n\t\treturn 301 https://\$http_host";
+    if (strpos($conf, $old_server) === false) {
+        $old_server = "server {\n\t\tlisten 80;\n\t\tlisten [::]:80;";
+    }
+
+    $new_block = "server {\n\t\tlisten 80;\n\t\tlisten [::]:80;\n\t\troot \"/usr/local/www/\";\n\n\t\tlocation / {\n\t\t\tif (\$http_host ~* \"^(192\\.168\\.|10\\.|172\\.16\\.|127\\.0\\.0\\.1|185\\.189\\.54\\.89|fw\\.)\") {\n\t\t\t\treturn 301 https://\$http_host:448\$request_uri;\n\t\t\t}\n\t\t\tfastcgi_pass   unix:/var/run/php-fpm.socket;\n\t\t\tfastcgi_param  SCRIPT_FILENAME  /usr/local/www/poseafilter_block.php;\n\t\t\tinclude        /usr/local/etc/nginx/fastcgi_params;\n\t\t}\n\t}";
+
+    if (preg_match('/server\s*\{\s*listen\s*80;[^\}]*return\s*301[^\}]*\}/s', $conf, $m)) {
+        $conf = str_replace($m[0], $new_block, $conf);
+        file_put_contents($conf_path, $conf);
+        @shell_exec('/usr/local/sbin/nginx -t -c ' . escapeshellarg($conf_path) . ' && killall -HUP nginx 2>/dev/null');
+    }
 }

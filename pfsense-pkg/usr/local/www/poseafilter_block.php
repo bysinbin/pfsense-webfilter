@@ -63,6 +63,34 @@ if (empty($reason)) {
     $reason = 'Kurumsal UTM Güvenlik ve İçerik Filtresi Politikası';
 }
 
+// Check for user-defined custom HTML block page
+$custom_html_file = '/conf/poseafilter_block_custom.html';
+if (!file_exists($custom_html_file)) {
+    $custom_html_file = '/var/etc/poseafilter/block_custom.html';
+}
+
+if (file_exists($custom_html_file)) {
+    $custom_raw = @file_get_contents($custom_html_file);
+    if ($custom_raw !== false && trim($custom_raw) !== '') {
+        $hostname = @file_get_contents('/etc/myname') ?: 'pfSense';
+        $replacements = [
+            '{DOMAIN}' => htmlspecialchars($domain),
+            '{CLIENT_IP}' => htmlspecialchars($client_ip),
+            '{USER}' => htmlspecialchars($ad_user['username'] ?? 'Anonymous'),
+            '{DISPLAY_NAME}' => htmlspecialchars($ad_user['display_name'] ?? ($ad_user['username'] ?? 'Anonymous')),
+            '{DEPARTMENT}' => htmlspecialchars($ad_user['department'] ?? 'Genel'),
+            '{GROUPS}' => htmlspecialchars(implode(', ', $ad_user['groups'] ?? [])),
+            '{REASON}' => htmlspecialchars($reason),
+            '{TIME}' => date('Y-m-d H:i:s'),
+            '{DATE}' => date('Y-m-d'),
+            '{GATEWAY}' => trim($hostname)
+        ];
+        $output_html = str_replace(array_keys($replacements), array_values($replacements), $custom_raw);
+        echo $output_html;
+        exit;
+    }
+}
+
 // Handle unblock request submission
 $request_sent = false;
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['submit_exemption'])) {
