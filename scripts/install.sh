@@ -136,11 +136,29 @@ if (!$pkg_found) {
         "status" => "Stable",
         "configurationfile" => "poseafilter.xml"
     ];
-    write_config("Installed PoseaFilter package");
-    echo "[+] Registered PoseaFilter in pfSense config.xml\n";
+    echo "[+] Registered PoseaFilter package in pfSense config.xml\n";
 } else {
     echo "[*] PoseaFilter already registered in pfSense config.xml\n";
 }
+
+$menu_found = false;
+if (isset($config["installedpackages"]["menu"])) {
+    foreach ($config["installedpackages"]["menu"] as $m) {
+        if ($m["name"] == "PoseaFilter") {
+            $menu_found = true;
+            break;
+        }
+    }
+}
+if (!$menu_found) {
+    $config["installedpackages"]["menu"][] = [
+        "name" => "PoseaFilter",
+        "section" => "Services",
+        "url" => "/pkg_edit.php?xml=poseafilter.xml"
+    ];
+    echo "[+] Registered PoseaFilter in Services menu\n";
+}
+write_config("Installed PoseaFilter package and menu");
 
 poseafilter_install();
 '
