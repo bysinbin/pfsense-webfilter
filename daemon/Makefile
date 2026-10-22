@@ -13,15 +13,10 @@ SRCS = src/main.c \
        src/pf_manager.c \
        src/arp_bsd.c
 
-OBJS = $(SRCS:.c=.o)
-
 all: $(TARGET)
 
-$(TARGET): $(OBJS)
-	$(CC) $(OBJS) -o $(TARGET) $(LDFLAGS)
-
-%.o: %.c
-	$(CC) $(CFLAGS) -c $< -o $@
+$(TARGET): $(SRCS)
+	$(CC) $(CFLAGS) $(SRCS) -o $(TARGET) $(LDFLAGS)
 
 install: $(TARGET)
 	install -d /usr/local/sbin
@@ -30,6 +25,6 @@ install: $(TARGET)
 	install -d /var/log/poseafilter
 
 clean:
-	rm -f $(OBJS) $(TARGET)
+	rm -f $(TARGET) *.o
 
 .PHONY: all clean install

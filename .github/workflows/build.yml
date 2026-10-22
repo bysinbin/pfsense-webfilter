@@ -3,9 +3,6 @@ name: Build FreeBSD 14 amd64 Binary
 on:
   push:
     branches: [ main ]
-    paths:
-      - 'daemon/**'
-      - '.github/workflows/**'
   workflow_dispatch:
 
 permissions:
@@ -25,18 +22,12 @@ jobs:
           usesh: true
           run: |
             cd daemon
-            make
+            clang -O2 -pthread -Iinclude src/main.c src/cJSON.c src/dns_engine.c src/filter_matcher.c src/bsearch_feed.c src/sni_parser.c src/pf_manager.c src/arp_bsd.c -o poseafilterd
             strip poseafilterd
             mkdir -p bin
             cp poseafilterd bin/poseafilterd
             chmod 755 bin/poseafilterd
             ls -lh bin/poseafilterd
-
-      - name: Upload Binary Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: poseafilterd-freebsd14-amd64
-          path: daemon/bin/poseafilterd
 
       - name: Commit and Push Binary to Repo
         run: |
@@ -49,3 +40,9 @@ jobs:
             git commit -m "chore(build): update precompiled FreeBSD 14 amd64 binary"
             git push origin main
           fi
+
+      - name: Upload Binary Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: poseafilterd-freebsd14-amd64
+          path: daemon/bin/poseafilterd
