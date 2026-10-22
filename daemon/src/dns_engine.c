@@ -76,27 +76,46 @@ static int parse_dns_qname(const uint8_t *buf, size_t len, size_t offset, char *
     return (int)pos;
 }
 
-/* Helper: synthesize DNS Sinkhole response */
+/* Helper: synthesize RFC-compliant DNS Sinkhole response (strips OPT/EDNS to guarantee 0.0.0.0 parsing) */
 static size_t build_sinkhole_response(const uint8_t *query, size_t qlen,
                                       uint8_t *resp, size_t max_resp,
+                                      size_t question_end,
                                       uint16_t qtype, const char *sinkhole_ip) {
-    if (qlen < 12 || max_resp < qlen + 16) return 0;
-    memcpy(resp, query, qlen);
+    if (qlen < 12 || question_end > qlen || max_resp < question_end + 32) return 0;
+
+    /* Transaction ID */
+    resp[0] = query[0];
+    resp[1] = query[1];
 
     /* Flags: QR=1 (Response), AA=1, RD=1, RA=1, RCODE=0 (NOERROR) */
     resp[2] = 0x81;
     resp[3] = 0x80;
 
+    /* QDCOUNT = 1 */
+    resp[4] = 0x00;
+    resp[5] = 0x01;
+
+    /* NSCOUNT = 0, ARCOUNT = 0 (strip OPT/EDNS pseudo-RR to prevent parser errors) */
+    resp[8] = 0x00;
+    resp[9] = 0x00;
+    resp[10] = 0x00;
+    resp[11] = 0x00;
+
+    /* Copy Question section (from byte 12 to question_end) */
+    memcpy(resp + 12, query + 12, question_end - 12);
+
     if (qtype == 28) {
         /* AAAA query: return NOERROR with 0 answers (NODATA) */
-        resp[6] = 0x00; resp[7] = 0x00; /* ANCOUNT = 0 */
-        return qlen;
+        resp[6] = 0x00;
+        resp[7] = 0x00; /* ANCOUNT = 0 */
+        return question_end;
     }
 
-    /* A query (qtype == 1): return 1 answer */
-    resp[6] = 0x00; resp[7] = 0x01; /* ANCOUNT = 1 */
+    /* A query (or default): return 1 answer */
+    resp[6] = 0x00;
+    resp[7] = 0x01; /* ANCOUNT = 1 */
 
-    size_t pos = qlen;
+    size_t pos = question_end;
     /* Name pointer to QNAME (0xC00C) */
     resp[pos++] = 0xC0;
     resp[pos++] = 0x0C;
@@ -193,9 +212,9 @@ static void *dns_worker_loop(void *arg) {
 
         char domain[256] = {0};
         uint16_t qtype = 1;
-        parse_dns_qname(req_buf, n, 12, domain, sizeof(domain), &qtype);
+        int qname_pos = parse_dns_qname(req_buf, n, 12, domain, sizeof(domain), &qtype);
 
-        if (!domain[0]) {
+        if (qname_pos < 12 || !domain[0]) {
             /* Forward unparseable query */
             size_t rlen = forward_dns_query(req_buf, n, resp_buf, sizeof(resp_buf));
             if (rlen > 0) {
@@ -221,7 +240,9 @@ static void *dns_worker_loop(void *arg) {
 
             /* Sinkhole response */
             const char *sink_ip = g_filter.config.sinkhole_ip[0] ? g_filter.config.sinkhole_ip : "0.0.0.0";
-            size_t rlen = build_sinkhole_response(req_buf, n, resp_buf, sizeof(resp_buf), qtype, sink_ip);
+            size_t question_end = (size_t)qname_pos + 4;
+            if (question_end > (size_t)n) question_end = n;
+            size_t rlen = build_sinkhole_response(req_buf, n, resp_buf, sizeof(resp_buf), question_end, qtype, sink_ip);
             if (rlen > 0) {
                 sendto(s_dns_sock, resp_buf, rlen, 0, (struct sockaddr *)&client_addr, client_len);
             }
