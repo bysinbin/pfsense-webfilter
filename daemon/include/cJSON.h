@@ -13,6 +13,10 @@
 #ifndef cJSON__h
 #define cJSON__h
 
+#ifndef cJSON_ArrayForEach
+#define cJSON_ArrayForEach(element, array) for(element = (array != NULL) ? (array)->child : NULL; element != NULL; element = element->next)
+#endif
+
 #ifdef __cplusplus
 extern "C"
 {
