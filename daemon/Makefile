@@ -1,7 +1,7 @@
 # Makefile for PoseaFilter pfSense / FreeBSD Daemon
 CC ?= clang
 CFLAGS ?= -O2 -Wall -Wextra -pthread -Iinclude -D_GNU_SOURCE
-LDFLAGS ?= -pthread
+LDFLAGS ?= -pthread -lm
 
 TARGET = poseafilterd
 SRCS = src/main.c \
