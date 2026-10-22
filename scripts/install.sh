@@ -174,6 +174,34 @@ write_config("Installed PoseaFilter package, feeds and menu");
 poseafilter_install();
 '
 
+# Step 5b: Register in FreeBSD pkg database (System > Package Manager)
+cat << 'EOF' > /tmp/manifest_poseafilter.ucl
+name: "pfSense-pkg-PoseaFilter"
+origin: "net/pfSense-pkg-PoseaFilter"
+version: "1.0.0"
+comment: "PoseaFilter UTM Web & DNS Filtering Engine"
+maintainer: "bysinbin"
+www: "https://github.com/bysinbin/pfsense-webfilter"
+abi: "FreeBSD:15:amd64"
+arch: "freebsd:15:x86:64"
+prefix: "/usr/local"
+flatsize: 512000
+desc: "PoseaFilter UTM Web & DNS Filtering Engine for pfSense with 4.01M feeds, 24 categories, live monitoring and sub-millisecond filtering."
+categories: [
+    "security",
+    "net"
+]
+annotations: {
+    FreeBSD_version: "1500029",
+    repository: "pfSense"
+}
+files: {
+    /usr/local/sbin/poseafilterd: "-"
+}
+EOF
+/usr/local/sbin/pkg-static register -t -M /tmp/manifest_poseafilter.ucl 2>/dev/null || true
+rm -f /tmp/manifest_poseafilter.ucl
+
 echo "[*] Step 6: Starting PoseaFilter Service..."
 /usr/local/etc/rc.d/poseafilter.sh start || true
 
