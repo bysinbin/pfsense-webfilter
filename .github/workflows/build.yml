@@ -44,28 +44,34 @@ jobs:
                 -L/tmp/freebsd-sysroot/lib \
                 -O2 -pthread -Iinclude \
                 src/main.c src/cJSON.c src/dns_engine.c src/filter_matcher.c src/bsearch_feed.c src/sni_parser.c src/pf_manager.c src/arp_bsd.c \
-                -o bin/poseafilterd
+                -o bin/poseafilterd > bin/build.log 2>&1 || true
           
-          strip bin/poseafilterd
-          chmod 755 bin/poseafilterd
-          file bin/poseafilterd
-          ls -lh bin/poseafilterd
+          cat bin/build.log
+
+          if [ -f "bin/poseafilterd" ]; then
+            strip bin/poseafilterd
+            chmod 755 bin/poseafilterd
+            file bin/poseafilterd
+            ls -lh bin/poseafilterd
+            rm -f bin/build.log
+          fi
 
       - name: Upload Binary Artifact
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: poseafilterd-freebsd14-amd64
-          path: daemon/bin/poseafilterd
+          name: poseafilterd-build-output
+          path: daemon/bin/
 
       - name: Commit and Push Binary to Main Branch
+        if: always()
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git rm -f daemon/bin/build.log 2>/dev/null || true
-          git add -f daemon/bin/poseafilterd
+          git add -f daemon/bin/
           if git diff --staged --quiet; then
             echo "No changes to commit."
           else
-            git commit -m "chore(release): precompiled FreeBSD 14 amd64 binary for pfSense"
+            git commit -m "build: compile output update"
             git push origin main
           fi
