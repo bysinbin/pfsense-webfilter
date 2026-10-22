@@ -21,16 +21,64 @@ if [ ! -f "/etc/inc/globals.inc" ]; then
     echo "[!] Warning: /etc/inc/globals.inc not found. Are you running inside pfSense?"
 fi
 
-SCRIPT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+# Determine source directory or download tarball if running piped via stdin
+SCRIPT_DIR="$(cd "$(dirname "$0")/.." 2>/dev/null && pwd)"
+
+if [ ! -d "${SCRIPT_DIR}/pfsense-pkg" ] || [ ! -d "${SCRIPT_DIR}/daemon" ]; then
+    echo "[*] Piped installer detected. Downloading repository files from GitHub..."
+    TMP_DIR="/tmp/pfsense_wf_install"
+    rm -rf "${TMP_DIR}"
+    mkdir -p "${TMP_DIR}"
+
+    ARCHIVE_URL="https://codeload.github.com/bysinbin/pfsense-webfilter/tar.gz/refs/heads/main"
+    if ! fetch -q -o "${TMP_DIR}/main.tar.gz" "${ARCHIVE_URL}"; then
+        echo "[*] Trying fallback GitHub URL..."
+        fetch -q -o "${TMP_DIR}/main.tar.gz" "https://github.com/bysinbin/pfsense-webfilter/archive/refs/heads/main.tar.gz"
+    fi
+
+    tar -xzf "${TMP_DIR}/main.tar.gz" -C "${TMP_DIR}"
+    SCRIPT_DIR="${TMP_DIR}/pfsense-webfilter-main"
+
+    if [ ! -d "${SCRIPT_DIR}/pfsense-pkg" ]; then
+        echo "[!] Error: Failed to unpack repository files."
+        exit 1
+    fi
+    echo "[+] Repository files downloaded successfully."
+fi
 
 echo "[*] Step 1: Compiling PoseaFilter Daemon for FreeBSD..."
 if [ -d "${SCRIPT_DIR}/daemon" ]; then
     cd "${SCRIPT_DIR}/daemon"
-    make clean >/dev/null 2>&1 || true
-    make -j$(sysctl -n hw.ncpu 2>/dev/null || echo 2)
-    cp poseafilterd /usr/local/sbin/poseafilterd
-    chmod 755 /usr/local/sbin/poseafilterd
-    echo "[+] Daemon compiled and installed to /usr/local/sbin/poseafilterd"
+
+    CC_BIN=""
+    if which clang >/dev/null 2>&1; then
+        CC_BIN="clang"
+    elif which cc >/dev/null 2>&1; then
+        CC_BIN="cc"
+    elif which gcc >/dev/null 2>&1; then
+        CC_BIN="gcc"
+    fi
+
+    if [ -z "${CC_BIN}" ]; then
+        echo "[!] C compiler not found in base. Attempting to install clang via pkg..."
+        pkg install -y clang || true
+        if which clang >/dev/null 2>&1; then
+            CC_BIN="clang"
+        elif which cc >/dev/null 2>&1; then
+            CC_BIN="cc"
+        fi
+    fi
+
+    if [ -n "${CC_BIN}" ]; then
+        echo "[*] Using compiler: ${CC_BIN}"
+        make CC="${CC_BIN}" clean >/dev/null 2>&1 || true
+        make CC="${CC_BIN}" -j$(sysctl -n hw.ncpu 2>/dev/null || echo 2)
+        cp poseafilterd /usr/local/sbin/poseafilterd
+        chmod 755 /usr/local/sbin/poseafilterd
+        echo "[+] Daemon compiled and installed to /usr/local/sbin/poseafilterd"
+    else
+        echo "[!] Warning: No C compiler found. Please install clang with: pkg install -y clang"
+    fi
 fi
 
 echo "[*] Step 2: Creating Working Directories..."
@@ -40,14 +88,21 @@ chmod 750 /var/etc/poseafilter
 chmod 750 /var/log/poseafilter
 
 echo "[*] Step 3: Installing FreeBSD rc.d Service..."
+mkdir -p /usr/local/etc/rc.d
 cp "${SCRIPT_DIR}/pfsense-pkg/etc/rc.d/poseafilter.sh" /usr/local/etc/rc.d/poseafilter.sh
 chmod 755 /usr/local/etc/rc.d/poseafilter.sh
 
 echo "[*] Step 4: Installing pfSense WebGUI Components..."
+mkdir -p /usr/local/pkg
+mkdir -p /usr/local/www
 cp "${SCRIPT_DIR}/pfsense-pkg/usr/local/pkg/poseafilter.xml" /usr/local/pkg/poseafilter.xml
 cp "${SCRIPT_DIR}/pfsense-pkg/usr/local/pkg/poseafilter.inc" /usr/local/pkg/poseafilter.inc
 cp "${SCRIPT_DIR}/pfsense-pkg/usr/local/www/poseafilter_monitor.php" /usr/local/www/poseafilter_monitor.php
 cp "${SCRIPT_DIR}/pfsense-pkg/usr/local/www/poseafilter_rules.php" /usr/local/www/poseafilter_rules.php
+if [ -f "${SCRIPT_DIR}/scripts/update_feeds.sh" ]; then
+    cp "${SCRIPT_DIR}/scripts/update_feeds.sh" /usr/local/pkg/update_feeds.sh
+    chmod 755 /usr/local/pkg/update_feeds.sh
+fi
 chmod 644 /usr/local/pkg/poseafilter.*
 chmod 644 /usr/local/www/poseafilter_*
 
@@ -86,6 +141,11 @@ poseafilter_install();
 
 echo "[*] Step 6: Starting PoseaFilter Service..."
 /usr/local/etc/rc.d/poseafilter.sh start || true
+
+# Cleanup temporary download directory
+if [ -d "/tmp/pfsense_wf_install" ]; then
+    rm -rf "/tmp/pfsense_wf_install"
+fi
 
 echo "=========================================================="
 echo "  [SUCCESS] PoseaFilter has been successfully installed!  "
