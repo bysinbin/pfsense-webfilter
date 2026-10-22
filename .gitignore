@@ -3,7 +3,8 @@
 *.so
 *.dylib
 *.a
-poseafilterd
+daemon/poseafilterd
+!daemon/bin/poseafilterd
 
 # Package archives
 *.txz

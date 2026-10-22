@@ -1,0 +1,51 @@
+name: Build FreeBSD 14 amd64 Binary
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'daemon/**'
+      - '.github/workflows/**'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Build in FreeBSD 14 VM
+        uses: vmactions/freebsd-vm@v1
+        with:
+          release: '14.0'
+          usesh: true
+          run: |
+            cd daemon
+            make
+            strip poseafilterd
+            mkdir -p bin
+            cp poseafilterd bin/poseafilterd
+            chmod 755 bin/poseafilterd
+            ls -lh bin/poseafilterd
+
+      - name: Upload Binary Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: poseafilterd-freebsd14-amd64
+          path: daemon/bin/poseafilterd
+
+      - name: Commit and Push Binary to Repo
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add daemon/bin/poseafilterd
+          if git diff --staged --quiet; then
+            echo "No binary changes to commit."
+          else
+            git commit -m "chore(build): update precompiled FreeBSD 14 amd64 binary"
+            git push origin main
+          fi

@@ -46,8 +46,13 @@ if [ ! -d "${SCRIPT_DIR}/pfsense-pkg" ] || [ ! -d "${SCRIPT_DIR}/daemon" ]; then
     echo "[+] Repository files downloaded successfully."
 fi
 
-echo "[*] Step 1: Compiling PoseaFilter Daemon for FreeBSD..."
-if [ -d "${SCRIPT_DIR}/daemon" ]; then
+echo "[*] Step 1: Installing PoseaFilter Daemon for FreeBSD..."
+if [ -f "${SCRIPT_DIR}/daemon/bin/poseafilterd" ]; then
+    echo "[+] Found precompiled FreeBSD amd64 binary: ${SCRIPT_DIR}/daemon/bin/poseafilterd"
+    cp "${SCRIPT_DIR}/daemon/bin/poseafilterd" /usr/local/sbin/poseafilterd
+    chmod 755 /usr/local/sbin/poseafilterd
+    echo "[+] Daemon successfully installed to /usr/local/sbin/poseafilterd"
+elif [ -d "${SCRIPT_DIR}/daemon" ]; then
     cd "${SCRIPT_DIR}/daemon"
 
     CC_BIN=""
@@ -60,24 +65,25 @@ if [ -d "${SCRIPT_DIR}/daemon" ]; then
     fi
 
     if [ -z "${CC_BIN}" ]; then
-        echo "[!] C compiler not found in base. Attempting to install clang via pkg..."
-        pkg install -y clang || true
-        if which clang >/dev/null 2>&1; then
+        echo "[!] C compiler not found in base. Attempting to install clang via pkg-static..."
+        pkg-static install -y clang || pkg install -y clang || true
+        if command -v clang >/dev/null 2>&1 || which clang >/dev/null 2>&1; then
             CC_BIN="clang"
-        elif which cc >/dev/null 2>&1; then
+        elif command -v cc >/dev/null 2>&1 || which cc >/dev/null 2>&1; then
             CC_BIN="cc"
         fi
     fi
 
     if [ -n "${CC_BIN}" ]; then
-        echo "[*] Using compiler: ${CC_BIN}"
+        echo "[*] Compiling using: ${CC_BIN}..."
         make CC="${CC_BIN}" clean >/dev/null 2>&1 || true
         make CC="${CC_BIN}" -j$(sysctl -n hw.ncpu 2>/dev/null || echo 2)
+        strip poseafilterd 2>/dev/null || true
         cp poseafilterd /usr/local/sbin/poseafilterd
         chmod 755 /usr/local/sbin/poseafilterd
         echo "[+] Daemon compiled and installed to /usr/local/sbin/poseafilterd"
     else
-        echo "[!] Warning: No C compiler found. Please install clang with: pkg install -y clang"
+        echo "[!] Warning: No C compiler found and no precompiled binary available."
     fi
 fi
 
