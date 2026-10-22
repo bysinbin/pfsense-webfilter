@@ -10,7 +10,7 @@
 
 name="poseafilter"
 rcvar="poseafilter_enable"
-extra_commands="reload"
+extra_commands="reload status"
 
 command="/usr/local/sbin/poseafilterd"
 command_args="-c /var/etc/poseafilter"
@@ -28,7 +28,16 @@ poseafilter_start() {
     if [ ! -d "/var/log/poseafilter" ]; then
         mkdir -p /var/log/poseafilter
     fi
+    if pgrep -q poseafilterd; then
+        echo "poseafilter is already running (PID: $(pgrep poseafilterd))."
+        return 0
+    fi
     /usr/sbin/daemon -p ${pidfile} -f ${command} ${command_args}
+    sleep 1
+    if pgrep -q poseafilterd; then
+        pgrep poseafilterd > "${pidfile}"
+        echo "poseafilter started successfully (PID: $(cat ${pidfile}))."
+    fi
 }
 
 poseafilter_stop() {
@@ -48,8 +57,18 @@ poseafilter_reload() {
     killall -HUP poseafilterd 2>/dev/null
 }
 
+poseafilter_status() {
+    if pgrep -q poseafilterd; then
+        echo "poseafilter is running (PID: $(pgrep poseafilterd))."
+        return 0
+    fi
+    echo "poseafilter is not running."
+    return 1
+}
+
 start_cmd="poseafilter_start"
 stop_cmd="poseafilter_stop"
 reload_cmd="poseafilter_reload"
+status_cmd="poseafilter_status"
 
 run_rc_command "$1"
