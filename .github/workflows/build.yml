@@ -18,13 +18,16 @@ jobs:
       - name: Install Clang & LLD
         run: |
           sudo apt-get update
-          sudo apt-get install -y clang lld wget
+          sudo apt-get install -y clang lld wget tar xz-utils
 
       - name: Setup FreeBSD 14 Sysroot
         run: |
           mkdir -p /tmp/freebsd-sysroot
           echo "[*] Downloading FreeBSD 14 base headers and libraries..."
-          wget -q https://download.freebsd.org/releases/amd64/14.0-RELEASE/base.txz -O /tmp/base.txz
+          wget -q --show-progress https://download.freebsd.org/releases/amd64/14.4-RELEASE/base.txz -O /tmp/base.txz || \
+          wget -q --show-progress https://archive.freebsd.org/old-releases/amd64/14.0-RELEASE/base.txz -O /tmp/base.txz
+          
+          echo "[*] Extracting sysroot headers and libraries..."
           tar -xf /tmp/base.txz -C /tmp/freebsd-sysroot ./usr/include ./usr/lib ./lib
           rm -f /tmp/base.txz
 
