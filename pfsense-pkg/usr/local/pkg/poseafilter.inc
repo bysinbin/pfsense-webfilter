@@ -97,7 +97,7 @@ function poseafilter_resync() {
 
     if ($is_enabled) {
         if (is_service_running("poseafilter")) {
-            mwexec(POSEAFILTER_RC . " reload");
+            poseafilter_reload();
         } else {
             mwexec(POSEAFILTER_RC . " start");
         }
@@ -115,6 +115,11 @@ function poseafilter_resync() {
  * pfSense Hook: filter_generate_opt_rules()
  * Automatically injected into pfSense PF ruleset
  */
+function poseafilter_reload() {
+    mwexec(POSEAFILTER_RC . " reload");
+    mwexec("/usr/bin/killall -HUP poseafilterd 2>/dev/null");
+}
+
 function poseafilter_generate_rules($type) {
     global $config;
 

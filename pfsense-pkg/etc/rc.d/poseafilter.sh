@@ -10,6 +10,7 @@
 
 name="poseafilter"
 rcvar="poseafilter_enable"
+extra_commands="reload"
 
 command="/usr/local/sbin/poseafilterd"
 command_args="-c /var/etc/poseafilter"
@@ -32,21 +33,19 @@ poseafilter_start() {
 
 poseafilter_stop() {
     echo "Stopping PoseaFilter daemon..."
-    if [ -f "${pidfile}" ]; then
+    if [ -f "${pidfile}" ] && [ -s "${pidfile}" ]; then
         kill -TERM $(cat ${pidfile}) 2>/dev/null
         rm -f ${pidfile}
-    else
-        killall -TERM poseafilterd 2>/dev/null
     fi
+    killall -TERM poseafilterd 2>/dev/null
 }
 
 poseafilter_reload() {
     echo "Reloading PoseaFilter configuration..."
-    if [ -f "${pidfile}" ]; then
+    if [ -f "${pidfile}" ] && [ -s "${pidfile}" ]; then
         kill -HUP $(cat ${pidfile}) 2>/dev/null
-    else
-        killall -HUP poseafilterd 2>/dev/null
     fi
+    killall -HUP poseafilterd 2>/dev/null
 }
 
 start_cmd="poseafilter_start"

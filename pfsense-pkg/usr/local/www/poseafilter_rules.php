@@ -27,7 +27,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
         $rules = $new_rules;
         file_put_contents($rules_file, json_encode($rules, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
-        mwexec(POSEAFILTER_RC . " reload");
+        poseafilter_reload();
         header("Location: /poseafilter_rules.php");
         exit;
     }
@@ -41,7 +41,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         }
         file_put_contents($rules_file, json_encode($rules, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
-        mwexec(POSEAFILTER_RC . " reload");
+        poseafilter_reload();
         header("Location: /poseafilter_rules.php");
         exit;
     }
@@ -96,7 +96,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         file_put_contents($rules_file, json_encode($rules, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
-        mwexec(POSEAFILTER_RC . " reload");
+        poseafilter_reload();
         header("Location: /poseafilter_rules.php");
         exit;
     }
