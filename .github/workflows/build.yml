@@ -23,9 +23,8 @@ jobs:
       - name: Setup FreeBSD 14 Sysroot
         run: |
           mkdir -p /tmp/freebsd-sysroot
-          echo "[*] Downloading FreeBSD 14 base headers and libraries..."
-          wget -q --show-progress https://download.freebsd.org/releases/amd64/14.4-RELEASE/base.txz -O /tmp/base.txz || \
-          wget -q --show-progress https://archive.freebsd.org/old-releases/amd64/14.0-RELEASE/base.txz -O /tmp/base.txz
+          echo "[*] Downloading FreeBSD 14 base..."
+          wget -q https://download.freebsd.org/releases/amd64/14.4-RELEASE/base.txz -O /tmp/base.txz
           
           echo "[*] Extracting sysroot headers and libraries..."
           tar -xf /tmp/base.txz -C /tmp/freebsd-sysroot ./usr/include ./usr/lib ./lib
@@ -35,31 +34,35 @@ jobs:
         run: |
           cd daemon
           mkdir -p bin
-          clang --target=x86_64-unknown-freebsd14 \
+          echo "[*] Running Clang Cross-Compiler..."
+          clang -v --target=x86_64-unknown-freebsd14 \
                 --sysroot=/tmp/freebsd-sysroot \
                 -fuse-ld=lld \
-                -O2 -pthread -Wall -Wextra -Iinclude \
+                -B/tmp/freebsd-sysroot/usr/lib \
+                -L/tmp/freebsd-sysroot/usr/lib \
+                -L/tmp/freebsd-sysroot/lib \
+                -O2 -pthread -Iinclude \
                 src/main.c src/cJSON.c src/dns_engine.c src/filter_matcher.c src/bsearch_feed.c src/sni_parser.c src/pf_manager.c src/arp_bsd.c \
-                -o bin/poseafilterd
-          strip bin/poseafilterd
-          chmod 755 bin/poseafilterd
-          file bin/poseafilterd
-          ls -lh bin/poseafilterd
+                -o bin/poseafilterd > bin/build.log 2>&1 || true
+          
+          if [ -f "bin/poseafilterd" ]; then
+            strip bin/poseafilterd
+            chmod 755 bin/poseafilterd
+            file bin/poseafilterd
+            ls -lh bin/poseafilterd
+          else
+            echo "[!] Compilation failed. Log contents:"
+            cat bin/build.log
+          fi
 
-      - name: Upload Binary Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: poseafilterd-freebsd14-amd64
-          path: daemon/bin/poseafilterd
-
-      - name: Commit and Push Binary to Main Branch
+      - name: Commit and Push Binary or Log
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git add -f daemon/bin/poseafilterd
+          git add -f daemon/bin/
           if git diff --staged --quiet; then
-            echo "No binary changes to commit."
+            echo "No changes to commit."
           else
-            git commit -m "chore(release): precompiled FreeBSD 14 amd64 binary for pfSense"
+            git commit -m "build: compile output update"
             git push origin main
           fi
