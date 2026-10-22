@@ -282,7 +282,7 @@ if (in_array('streaming', $cats_set, true)) {
 }
 
 /* 2. Download Category Feeds */
-if ($provider === 'hagezi') {
+if ($provider === 'hagezi' || $provider === 'hybrid') {
     echo "[*] Fetching HaGeZi Category Lists...\n";
     foreach ($HAGEZI_CATEGORY_URLS as $cat => $url) {
         if (in_array($cat, $cats_set, true)) {
@@ -312,12 +312,10 @@ if ($provider === 'hagezi') {
     if (!empty($uncovered_cats)) {
         echo "[*] Extracting supplemental categories from UT1 Capitole Toulouse: " . implode(', ', $uncovered_cats) . "...\n";
         $ut1_tar = CACHE_DIR . '/blacklists.tar.gz';
-        if (!file_exists($ut1_tar) || (time() - filemtime($ut1_tar) > 48 * 3600)) {
-            echo "  -> Downloading UT1 archive into cache...\n";
-            $tar_data = fetch_url("http://dsi.ut-capitole.fr/blacklists/download/blacklists.tar.gz", 120);
-            if ($tar_data) {
-                file_put_contents($ut1_tar, $tar_data);
-            }
+        if (!file_exists($ut1_tar) || (time() - filemtime($ut1_tar) > 48 * 3600) || filesize($ut1_tar) < 10000000) {
+            echo "  -> Downloading UT1 archive into cache from official FTP (ftp://ftp.ut-capitole.fr)...\n";
+            $cmd = "/usr/local/bin/curl -sSL --connect-timeout 15 -m 120 -o " . escapeshellarg($ut1_tar) . " ftp://ftp.ut-capitole.fr/blacklist/blacklists.tar.gz";
+            system($cmd);
         }
 
         if (file_exists($ut1_tar)) {
@@ -343,15 +341,13 @@ if ($provider === 'hagezi') {
             }
         }
     }
-} elseif ($provider === 'ut1') {
+} if ($provider === 'ut1' || $provider === 'hybrid') {
     echo "[*] Fetching UT1 Capitole Toulouse Categories...\n";
     $ut1_tar = CACHE_DIR . '/blacklists.tar.gz';
-    if (!file_exists($ut1_tar) || (time() - filemtime($ut1_tar) > 48 * 3600)) {
-        echo "  -> Downloading UT1 archive (approx 50MB) into cache...\n";
-        $tar_data = fetch_url("http://dsi.ut-capitole.fr/blacklists/download/blacklists.tar.gz", 180);
-        if ($tar_data) {
-            file_put_contents($ut1_tar, $tar_data);
-        }
+    if (!file_exists($ut1_tar) || (time() - filemtime($ut1_tar) > 48 * 3600) || filesize($ut1_tar) < 10000000) {
+        echo "  -> Downloading UT1 archive into cache from official FTP (ftp://ftp.ut-capitole.fr)...\n";
+        $cmd = "/usr/local/bin/curl -sSL --connect-timeout 15 -m 120 -o " . escapeshellarg($ut1_tar) . " ftp://ftp.ut-capitole.fr/blacklist/blacklists.tar.gz";
+        system($cmd);
     }
 
     if (file_exists($ut1_tar)) {

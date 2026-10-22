@@ -362,6 +362,9 @@ foreach (($feed_conf['threat_feeds'] ?? $DEFAULT_THREAT_FEEDS) as $tf) {
                                 <option value="ut1" <?=($feed_conf['provider'] ?? '') === 'ut1' ? 'selected' : ''?>>
                                     UT1 Capitole Toulouse - 2.000.000+ Alan Adı (Akademik Arşiv)
                                 </option>
+                                <option value="hybrid" <?=($feed_conf['provider'] ?? '') === 'hybrid' ? 'selected' : ''?>>
+                                    Hibrit (HaGeZi + UT1 Toulouse + Tehdit Beslemeleri - 4.000.000+ En Kapsamlı)
+                                </option>
                             </select>
                             <span class="help-block">HaGeZi günlük güncellenir ve hatalı pozitif oranı düşüktür. UT1 Capitole Fransa Toulouse Üniversitesi 2M+ alan adı arşivini içerir.</span>
                         </div>
@@ -382,11 +385,18 @@ foreach (($feed_conf['threat_feeds'] ?? $DEFAULT_THREAT_FEEDS) as $tf) {
 
             <!-- 24 Categorization Cards -->
             <div class="panel panel-default">
-                <div class="panel-heading" style="display:flex; justify-content:space-between; align-items:center;">
-                    <h2 class="panel-title"><i class="fa-solid fa-layer-group"></i> <?=gettext("Granüler Kategori Seçimi (24 Kategori)")?></h2>
+                <div class="panel-heading" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
                     <div>
+                        <h2 class="panel-title" style="display:inline-block; margin-right:10px;"><i class="fa-solid fa-layer-group"></i> <?=gettext("Granüler Kategori Seçimi (24 Kategori)")?></h2>
+                        <span class="label label-info" style="font-size:0.85rem; padding:4px 8px; vertical-align:middle;">
+                            Seçili Kategori: <strong id="cat-selected-count">0 / 24</strong>
+                        </span>
+                    </div>
+                    <div style="display:flex; gap:8px; align-items:center;">
+                        <input type="text" id="cat-search-box" placeholder="Kategori ara..." oninput="filterCatCards(this.value)" class="form-control input-sm" style="width:150px; display:inline-block; height:26px; padding:2px 8px; font-size:0.8rem;">
                         <button type="button" class="btn btn-xs btn-default" onclick="toggleAllCats(true)"><i class="fa-solid fa-check-double"></i> Tümünü Seç</button>
                         <button type="button" class="btn btn-xs btn-default" onclick="toggleAllCats(false)"><i class="fa-solid fa-xmark"></i> Temizle</button>
+                        <button type="button" class="btn btn-xs btn-warning" onclick="selectRecommendedCats()"><i class="fa-solid fa-star"></i> Önerilen</button>
                     </div>
                 </div>
                 <div class="panel-body">
@@ -402,7 +412,7 @@ foreach (($feed_conf['threat_feeds'] ?? $DEFAULT_THREAT_FEEDS) as $tf) {
                             <?php foreach ($cat_list as $c):
                                 $checked = in_array($c['id'], $cur_cats, true) ? 'checked' : '';
                             ?>
-                                <div class="col-md-6 col-lg-4">
+                                <div class="col-md-6 col-lg-4 cat-card" data-name="<?=htmlspecialchars(strtolower($c['name'] . ' ' . $c['desc'] . ' ' . $c['id']))?>">
                                     <label class="feed-cat-box" style="display:block;">
                                         <div style="display:flex; align-items:flex-start;">
                                             <input type="checkbox" name="categories[]" value="<?=$c['id']?>" class="cat-check" <?=$checked?> style="margin-right:10px;">
@@ -465,12 +475,47 @@ foreach (($feed_conf['threat_feeds'] ?? $DEFAULT_THREAT_FEEDS) as $tf) {
 </div>
 
 <script>
+const RECOMMENDED_CATS = ['security', 'bypass', 'scam_fraud', 'adult', 'gambling', 'warez', 'drugs_weapons', 'hate_violence', 'ads'];
+
+function updateCatCount() {
+    const total = document.querySelectorAll('.cat-check').length;
+    const checked = document.querySelectorAll('.cat-check:checked').length;
+    const el = document.getElementById('cat-selected-count');
+    if (el) el.innerText = checked + ' / ' + total;
+}
+
 function toggleAllCats(state) {
     document.querySelectorAll('.cat-check').forEach(el => el.checked = state);
+    updateCatCount();
 }
+
 function toggleAllThreat(state) {
     document.querySelectorAll('.threat-check').forEach(el => el.checked = state);
 }
+
+function selectRecommendedCats() {
+    document.querySelectorAll('.cat-check').forEach(el => {
+        el.checked = RECOMMENDED_CATS.includes(el.value);
+    });
+    updateCatCount();
+}
+
+function filterCatCards(q) {
+    q = (q || '').trim().toLowerCase();
+    document.querySelectorAll('.cat-card').forEach(card => {
+        const name = card.getAttribute('data-name') || '';
+        if (!q || name.includes(q)) {
+            card.style.display = 'block';
+        } else {
+            card.style.display = 'none';
+        }
+    });
+}
+
+document.querySelectorAll('.cat-check').forEach(el => {
+    el.addEventListener('change', updateCatCount);
+});
+updateCatCount();
 
 document.getElementById('btn-update-now').addEventListener('click', function() {
     const btn = this;
