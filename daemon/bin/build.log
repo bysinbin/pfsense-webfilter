@@ -1,4 +1,0 @@
-ld.lld: error: undefined symbol: floor
->>> referenced by cJSON.c
->>>               /tmp/cJSON-34becb.o:(print_value)
-clang: error: linker command failed with exit code 1 (use -v to see invocation)
