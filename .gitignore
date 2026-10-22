@@ -1,0 +1,20 @@
+# Binaries and object files
+*.o
+*.so
+*.dylib
+*.a
+poseafilterd
+
+# Package archives
+*.txz
+*.pkg
+*.tar.gz
+
+# Runtime files
+var/
+tmp/
+*.pid
+*.log
+*.swp
+*~
+.DS_Store

@@ -1,0 +1,100 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<!DOCTYPE packagegui SYSTEM "../schema/packages.dtd">
+<packagegui>
+    <name>poseafilter</name>
+    <version>1.0.0</version>
+    <title>Services: PoseaFilter (Next-Gen UTM Web Filter)</title>
+    <include_file>/usr/local/pkg/poseafilter.inc</include_file>
+    <menu>
+        <name>PoseaFilter</name>
+        <section>Services</section>
+        <configfile>poseafilter.xml</configfile>
+        <url>/pkg_edit.php?xml=poseafilter.xml</url>
+    </menu>
+    <tabs>
+        <tab>
+            <text>General Settings</text>
+            <url>/pkg_edit.php?xml=poseafilter.xml</url>
+            <active/>
+        </tab>
+        <tab>
+            <text>UTM Rules</text>
+            <url>/poseafilter_rules.php</url>
+        </tab>
+        <tab>
+            <text>Live Monitor &amp; Logs</text>
+            <url>/poseafilter_monitor.php</url>
+        </tab>
+    </tabs>
+    <fields>
+        <field>
+            <name>General Settings</name>
+            <type>listtopic</type>
+        </field>
+        <field>
+            <fielddescr>Enable PoseaFilter</fielddescr>
+            <fieldname>enable</fieldname>
+            <description>Check this to enable the PoseaFilter UTM Web Filtering daemon.</description>
+            <type>checkbox</type>
+        </field>
+        <field>
+            <fielddescr>Filter Interfaces</fielddescr>
+            <fieldname>interfaces</fieldname>
+            <description>Select the LAN / Internal interfaces where web filtering rules will be applied.</description>
+            <type>interfaces_selection</type>
+            <multiple>true</multiple>
+            <default_value>lan</default_value>
+        </field>
+        <field>
+            <fielddescr>Listen Port</fielddescr>
+            <fieldname>listen_port</fieldname>
+            <description>Internal UDP listening port for transparent DNS interception (Default: 5353).</description>
+            <type>input</type>
+            <default_value>5353</default_value>
+        </field>
+        <field>
+            <fielddescr>Upstream DNS</fielddescr>
+            <fieldname>upstream_dns</fieldname>
+            <description>IP:Port of upstream resolver for allowed traffic (e.g., 127.0.0.1:53 for Unbound, or 1.1.1.1:53).</description>
+            <type>input</type>
+            <default_value>127.0.0.1:53</default_value>
+        </field>
+        <field>
+            <fielddescr>Sinkhole IP</fielddescr>
+            <fieldname>sinkhole_ip</fieldname>
+            <description>IP returned for blocked domains (Default: 0.0.0.0).</description>
+            <type>input</type>
+            <default_value>0.0.0.0</default_value>
+        </field>
+        <field>
+            <fielddescr>PF Kernel Table Sync</fielddescr>
+            <fieldname>pf_table_sync</fieldname>
+            <description>Synchronize blocked domain IPs into FreeBSD PF table &lt;poseafilter_blocked&gt; to drop direct-IP bypass.</description>
+            <type>checkbox</type>
+            <default_value>on</default_value>
+        </field>
+        <field>
+            <fielddescr>Block DoH / DoT Bypass</fielddescr>
+            <fieldname>block_doh</fieldname>
+            <description>Block known DNS-over-HTTPS (port 443 DoH servers) and DNS-over-TLS (port 853) to prevent client bypass.</description>
+            <type>checkbox</type>
+            <default_value>on</default_value>
+        </field>
+        <field>
+            <fielddescr>Detailed Query Logging</fielddescr>
+            <fieldname>log_queries</fieldname>
+            <description>Log every allowed/blocked DNS request to /var/log/poseafilter/filter.log for audit and live monitoring.</description>
+            <type>checkbox</type>
+            <default_value>on</default_value>
+        </field>
+    </fields>
+    <custom_php_install_command>
+        poseafilter_install();
+    </custom_php_install_command>
+    <custom_php_deinstall_command>
+        poseafilter_deinstall();
+    </custom_php_deinstall_command>
+    <custom_php_resync_config_command>
+        poseafilter_resync();
+    </custom_php_resync_config_command>
+</packagegui>
