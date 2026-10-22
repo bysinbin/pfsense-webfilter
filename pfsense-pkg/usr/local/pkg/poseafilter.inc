@@ -128,6 +128,7 @@ function poseafilter_generate_rules($type) {
     $listen_port = !empty($pconfig['listen_port']) ? $pconfig['listen_port'] : "5353";
 
     switch ($type) {
+        case 'nat':
         case 'rdr':
             /* Redirect incoming LAN DNS queries (UDP 53) to PoseaFilter transparent proxy */
             foreach ($interfaces as $if) {

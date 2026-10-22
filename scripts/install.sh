@@ -134,7 +134,7 @@ if (!$pkg_found) {
         "website" => "https://github.com/bysinbin/pfsense-webfilter",
         "version" => "1.0.0",
         "status" => "Stable",
-        "configurationfile" => "poseafilter.xml"
+        "configurationfile" => "poseafilter.xml",`r`n        "filter_rule_function" => "poseafilter_generate_rules"
     ];
     echo "[+] Registered PoseaFilter package in pfSense config.xml\n";
 } else {
