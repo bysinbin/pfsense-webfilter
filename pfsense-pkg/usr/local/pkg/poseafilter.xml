@@ -18,6 +18,10 @@
             <active/>
         </tab>
         <tab>
+            <text>Feeds &amp; Categories</text>
+            <url>/poseafilter_feeds.php</url>
+        </tab>
+        <tab>
             <text>UTM Rules</text>
             <url>/poseafilter_rules.php</url>
         </tab>

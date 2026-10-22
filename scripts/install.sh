@@ -90,8 +90,10 @@ fi
 echo "[*] Step 2: Creating Working Directories..."
 mkdir -p /var/etc/poseafilter
 mkdir -p /var/log/poseafilter
+mkdir -p /var/cache/poseafilter
 chmod 750 /var/etc/poseafilter
 chmod 750 /var/log/poseafilter
+chmod 750 /var/cache/poseafilter
 
 echo "[*] Step 3: Installing FreeBSD rc.d Service..."
 mkdir -p /usr/local/etc/rc.d
@@ -103,12 +105,19 @@ mkdir -p /usr/local/pkg
 mkdir -p /usr/local/www
 cp "${SCRIPT_DIR}/pfsense-pkg/usr/local/pkg/poseafilter.xml" /usr/local/pkg/poseafilter.xml
 cp "${SCRIPT_DIR}/pfsense-pkg/usr/local/pkg/poseafilter.inc" /usr/local/pkg/poseafilter.inc
-cp "${SCRIPT_DIR}/pfsense-pkg/usr/local/www/poseafilter_monitor.php" /usr/local/www/poseafilter_monitor.php
-cp "${SCRIPT_DIR}/pfsense-pkg/usr/local/www/poseafilter_rules.php" /usr/local/www/poseafilter_rules.php
+if [ -f "${SCRIPT_DIR}/pfsense-pkg/usr/local/pkg/update_feeds.php" ]; then
+    cp "${SCRIPT_DIR}/pfsense-pkg/usr/local/pkg/update_feeds.php" /usr/local/pkg/update_feeds.php
+    chmod 755 /usr/local/pkg/update_feeds.php
+fi
 if [ -f "${SCRIPT_DIR}/scripts/update_feeds.sh" ]; then
     cp "${SCRIPT_DIR}/scripts/update_feeds.sh" /usr/local/pkg/update_feeds.sh
     chmod 755 /usr/local/pkg/update_feeds.sh
 fi
+
+cp "${SCRIPT_DIR}/pfsense-pkg/usr/local/www/poseafilter_feeds.php" /usr/local/www/poseafilter_feeds.php
+cp "${SCRIPT_DIR}/pfsense-pkg/usr/local/www/poseafilter_monitor.php" /usr/local/www/poseafilter_monitor.php
+cp "${SCRIPT_DIR}/pfsense-pkg/usr/local/www/poseafilter_rules.php" /usr/local/www/poseafilter_rules.php
+
 chmod 644 /usr/local/pkg/poseafilter.*
 chmod 644 /usr/local/www/poseafilter_*
 
@@ -119,8 +128,9 @@ require_once("/usr/local/pkg/poseafilter.inc");
 
 $pkg_found = false;
 if (isset($config["installedpackages"]["package"])) {
-    foreach ($config["installedpackages"]["package"] as $pkg) {
+    foreach ($config["installedpackages"]["package"] as &$pkg) {
         if ($pkg["name"] == "poseafilter") {
+            $pkg["filter_rule_function"] = "poseafilter_generate_rules";
             $pkg_found = true;
             break;
         }
@@ -134,7 +144,8 @@ if (!$pkg_found) {
         "website" => "https://github.com/bysinbin/pfsense-webfilter",
         "version" => "1.0.0",
         "status" => "Stable",
-        "configurationfile" => "poseafilter.xml",`r`n        "filter_rule_function" => "poseafilter_generate_rules"
+        "configurationfile" => "poseafilter.xml",
+        "filter_rule_function" => "poseafilter_generate_rules"
     ];
     echo "[+] Registered PoseaFilter package in pfSense config.xml\n";
 } else {
@@ -158,13 +169,16 @@ if (!$menu_found) {
     ];
     echo "[+] Registered PoseaFilter in Services menu\n";
 }
-write_config("Installed PoseaFilter package and menu");
+write_config("Installed PoseaFilter package, feeds and menu");
 
 poseafilter_install();
 '
 
 echo "[*] Step 6: Starting PoseaFilter Service..."
 /usr/local/etc/rc.d/poseafilter.sh start || true
+
+echo "[*] Step 7: Initializing Threat & Dynamic Category Feeds..."
+/usr/local/bin/php /usr/local/pkg/update_feeds.php || true
 
 # Cleanup temporary download directory
 if [ -d "/tmp/pfsense_wf_install" ]; then

@@ -54,9 +54,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $time_range = $_POST['time_range'] ?? '';
         $days = $_POST['days'] ?? 'all';
         $cats = isset($_POST['cats']) && is_array($_POST['cats']) ? implode(',', $_POST['cats']) : '';
-        $cats_allow = $_POST['cats_allow'] ?? '';
-        $custom_allowed = $_POST['custom_allowed'] ?? '';
         $custom_blocked = $_POST['custom_blocked'] ?? '';
+        $custom_allowed = $_POST['custom_allowed'] ?? '';
 
         $rule_obj = [
             "id" => $id,
@@ -67,13 +66,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             "time_range" => $time_range,
             "days" => $days,
             "categories" => $cats,
-            "categories_allow" => $cats_allow,
+            "categories_allow" => "",
+            "categories_drop" => "",
             "custom_allowed" => $custom_allowed,
             "custom_blocked" => $custom_blocked,
             "enabled" => true
         ];
 
-        /* Update or append */
         $found = false;
         foreach ($rules as &$r) {
             if ($r['id'] === $id) {
@@ -98,23 +97,36 @@ include("head.inc");
 
 $tab_array = array();
 $tab_array[] = array(gettext("General Settings"), false, "/pkg_edit.php?xml=poseafilter.xml");
+$tab_array[] = array(gettext("Feeds & Categories"), false, "/poseafilter_feeds.php");
 $tab_array[] = array(gettext("UTM Rules"), true, "/poseafilter_rules.php");
 $tab_array[] = array(gettext("Live Monitor & Logs"), false, "/poseafilter_monitor.php");
 display_top_tabs($tab_array);
 
 $categories_catalog = [
-    "social" => "Social Media (Facebook, Instagram, TikTok, Twitter/X)",
-    "streaming" => "Streaming & Video (YouTube, Netflix, Spotify, Twitch)",
-    "gambling" => "Gambling & Betting (Bet365, Nesine, Misli)",
-    "adult" => "Adult & Pornography",
-    "gaming" => "Online Games (Steam, Epic, Roblox, Riot)",
-    "warez" => "Warez & Torrent (PirateBay, 1337x)",
-    "bypass" => "VPN & Anonymizer Bypass (Tor, NordVPN, DoH)",
-    "tailscale" => "Tailscale Mesh VPN Protocol",
-    "wireguard" => "WireGuard VPN",
-    "crypto" => "Crypto & Trading (Binance, BTC)",
-    "shopping" => "E-Commerce & Shopping",
-    "jobs" => "Job Search Portals"
+    "security"       => "🛡️ Siber Tehdit & Zararlı (Malware, Phishing, Exploit)",
+    "bypass"         => "🕵️ DoH, VPN, Proxy & Anonymizer Atlatma",
+    "scam_fraud"     => "⚠️ Dolandırıcılık, Sahte Banka & Scam Siteleri",
+    "crypto"         => "🪙 Kripto Para Borsaları & Madencilik (Cryptojacking)",
+    "adult"          => "🔞 Yetişkin İçerik, Erotizm & Pornografi",
+    "gambling"       => "🎰 Kumar, Bahis & Şans Oyunları",
+    "dating"         => "💘 Arkadaşlık, Çöpçatanlık & Flört Siteleri",
+    "warez"          => "🏴‍☠️ Telif Hakkı, Warez, Crack & Torrent P2P",
+    "drugs_weapons"  => "💊 Narkotik Maddeler & Yasadışı Silahlar",
+    "hate_violence"  => "🛑 Şiddet, Nefret Söylemi & Aşırılıkçılık",
+    "cults"          => "🕯️ Zararlı Tarikatlar & Yıkıcı İnanç Grupları",
+    "ads"            => "📢 İnternet Reklamları, Banner & Analitik İzleyiciler",
+    "shorteners"     => "🔗 URL Kısaltma Servisleri (Bitly, TinyURL)",
+    "social"         => "📱 Sosyal Ağlar (Facebook, Instagram, TikTok, X)",
+    "streaming"      => "🎬 Video & Müzik (YouTube, Netflix, Spotify, TR Radyolar)",
+    "gaming"         => "🎮 Çevrimiçi Oyunlar & Portallar (Steam, Roblox)",
+    "shopping"       => "🛒 E-Ticaret, Alışveriş & Pazar Yerleri",
+    "forums_blogs"   => "💬 Forumlar & Kişisel Blog Platformları",
+    "webmail"        => "✉️ Kişisel Web E-Posta Servisleri",
+    "jobsearch"      => "💼 İş Arama & Kariyer Portalları",
+    "astrology"      => "🔮 Astroloji, Burçlar & Falcılık",
+    "cheating"       => "📝 Sınav & Akademik Hile / Sahtekarlık",
+    "tailscale"      => "🔒 Tailscale Mesh VPN Protokolü",
+    "wireguard"      => "⚡ WireGuard VPN Protokolü"
 ];
 ?>
 
@@ -173,7 +185,7 @@ $categories_catalog = [
                                 <?php endif; ?>
                             </td>
                             <td class="text-right">
-                                <form method="post" style="display:inline;" onsubmit="return confirm('Delete this rule?');">
+                                <form method="post" style="display:inline;" onsubmit="return confirm('Delete rule?');">
                                     <input type="hidden" name="act" value="del" />
                                     <input type="hidden" name="id" value="<?=htmlspecialchars($r['id'])?>" />
                                     <button type="submit" class="btn btn-xs btn-danger"><i class="fa-solid fa-trash"></i></button>
@@ -187,15 +199,15 @@ $categories_catalog = [
     </div>
 </div>
 
-<!-- Add / Edit Rule Form -->
 <div class="panel panel-default">
-    <div class="panel-heading"><h2 class="panel-title"><?=gettext("Add New UTM Web Filtering Rule")?></h2></div>
+    <div class="panel-heading"><h2 class="panel-title"><?=gettext("Add / Edit UTM Filtering Policy")?></h2></div>
     <div class="panel-body">
         <form method="post" class="form-horizontal">
             <input type="hidden" name="act" value="save" />
+            <input type="hidden" name="rule_id" value="" />
 
             <div class="form-group">
-                <label class="col-sm-2 control-label"><?=gettext("Rule Name")?></label>
+                <label class="col-sm-2 control-label"><?=gettext("Policy Name")?></label>
                 <div class="col-sm-6">
                     <input type="text" name="name" class="form-control" required placeholder="e.g. Sales Department Policy" />
                 </div>
@@ -236,10 +248,10 @@ $categories_catalog = [
                 <div class="col-sm-10">
                     <div class="row">
                         <?php foreach ($categories_catalog as $key => $title): ?>
-                            <div class="col-sm-4">
+                            <div class="col-sm-6 col-md-4">
                                 <div class="checkbox">
                                     <label>
-                                        <input type="checkbox" name="cats[]" value="<?=$key?>"> <strong><?=$key?></strong> (<?=$title?>)
+                                        <input type="checkbox" name="cats[]" value="<?=$key?>"> <strong><?=$key?></strong><br/><small class="text-muted"><?=$title?></small>
                                     </label>
                                 </div>
                             </div>
