@@ -125,11 +125,11 @@ static size_t build_sinkhole_response(const uint8_t *query, size_t qlen,
     /* CLASS: IN (0x0001) */
     resp[pos++] = 0x00;
     resp[pos++] = 0x01;
-    /* TTL: 60 seconds (0x0000003C) */
+    /* TTL: 5 seconds (0x00000005) for ultra-fast unblock / policy change response */
     resp[pos++] = 0x00;
     resp[pos++] = 0x00;
     resp[pos++] = 0x00;
-    resp[pos++] = 0x3C;
+    resp[pos++] = 0x05;
     /* RDLENGTH: 4 bytes */
     resp[pos++] = 0x00;
     resp[pos++] = 0x04;

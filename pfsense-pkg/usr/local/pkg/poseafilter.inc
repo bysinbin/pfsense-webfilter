@@ -118,6 +118,7 @@ function poseafilter_resync() {
 function poseafilter_reload() {
     mwexec(POSEAFILTER_RC . " reload");
     mwexec("/usr/bin/killall -HUP poseafilterd 2>/dev/null");
+    mwexec("/sbin/pfctl -t poseafilter_blocked -T flush 2>/dev/null");
 }
 
 function poseafilter_generate_rules($type) {
