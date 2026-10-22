@@ -10,41 +10,90 @@
 /* --- Built-in Category Seeds --- */
 
 static const char *s_streaming_seeds[] = {
-    "youtube.com", "googlevideo.com", "ytimg.com", "youtu.be",
-    "netflix.com", "nflxvideo.net", "nflxext.com", "nflximg.net",
-    "spotify.com", "scdn.co", "spotifycdn.com",
+    /* Major Global Video & Music */
+    "youtube.com", "googlevideo.com", "ytimg.com", "youtu.be", "youtubei.googleapis.com",
+    "netflix.com", "nflxvideo.net", "nflxext.com", "nflximg.net", "nflxso.net",
+    "spotify.com", "spoti.fi", "scdn.co", "spotifycdn.com", "audio-ak-spotify-com.akamaized.net",
     "twitch.tv", "ttvnw.net", "jtvnw.net",
-    "soundcloud.com", "sndcdn.com", "deezer.com", "dzcdn.net",
-    "disneyplus.com", "disney-plus.net", "bamgrid.com",
-    "blutv.com", "exxen.com", "puhutv.com", "gain.tv",
-    "karnaval.com", "superfm.com.tr", "metrofm.com.tr", "joyfm.com.tr", "joyturk.com.tr",
-    "virginradioturkiye.com", "powerapp.com.tr", "powerturk.com", "powerfm.com.tr",
-    "powerlovefm.com.tr", "kralmuzik.com.tr", "kralfm.com.tr", "kralpop.com.tr",
-    "ntvradyo.com.tr", "radyovoyage.com", "slowturk.net", "slowturk.com.tr",
-    "radyotrafik.com", "radyospor.com", "radyofenomen.com", "fenomenturk.com",
-    "alemfm.com.tr", "ligradyo.com.tr", "showradyo.com.tr", "radyoviva.com.tr",
-    "bestfm.com.tr", "babaradyo.com", "palfm.com.tr", "palstation.com.tr",
-    "trtdinle.com", "radyo.trt.net.tr", "trtfm.trt.net.tr", "diyanetradyo.com", NULL
+    "soundcloud.com", "sndcdn.com", "deezer.com", "dzcdn.net", "tidal.com", "tidalhifi.com",
+    "disneyplus.com", "disney-plus.net", "bamgrid.com", "disneystreaming.com",
+    "primevideo.com", "pv-cdn.net", "dailymotion.com", "dmcdn.net", "vimeo.com", "vimeocdn.com",
+    "music.apple.com", "music.youtube.com", "music.amazon.com", "pandora.com",
+    "shazam.com", "audiomack.com", "mixcloud.com", "bandcamp.com", "last.fm",
+    
+    /* Turkish TV & Streaming Platforms */
+    "blutv.com", "blutv.com.tr", "blutvcdn.com", "exxen.com", "exxencdn.com",
+    "puhutv.com", "gain.tv", "gainmedya.com", "tabii.com",
+    "dsmartgo.com.tr", "tivibu.com.tr", "todtv.com.tr", "beinconnect.com.tr",
+    "fizy.com", "fizy.org", "muud.com.tr",
+
+    /* Turkish Radio Portals (canliradyodinle etc.) */
+    "canliradyodinle.fm", "canliradyodinle.com", "canliradyolar.gen.tr", "radyolar.org",
+    "radyodinle.com", "e-radyo.org", "radiotower.net", "kesintisizdinle.com", "canli-radyo.biz",
+    "radyofm.gen.tr", "turkceradyodinle.com", "radyodinle.gen.tr", "onlineradyodinle.net",
+    "webdenradyo.com", "radyoland.com", "radyositesi.com", "radyoturk.org", "radyoturkce.com",
+    "bedavaradyo.com", "netradyo.net", "radyoip.com", "radyodinlesene.com", "canli-radyo.com",
+    "radyodinlecanli.com", "canliradyodinle.gen.tr", "canliradyodinle.org", "canliradyo.gen.tr",
+    "canliradyo.org", "canliradyodinle.net", "canliradyodinle.biz", "radyofm.com.tr", "radyofm.org",
+    "radyofm.net", "radyolar.net", "radyolar.biz", "radyolar.info", "radyo.info.tr", "radyo.gen.tr",
+    "radyodinle.biz", "kesintisizradyo.com", "frekanslar.gen.tr", "radyo-dinle.org", "radyodinle.mobi",
+    "kolayradyo.com", "canliradyodinlet.com",
+
+    /* Karnaval Group */
+    "karnaval.com", "media.karnaval.com", "listen.karnaval.com", "sc.karnaval.com", "api.karnaval.com",
+    "radio.karnaval.com", "superfm.com.tr", "metrofm.com.tr", "joyfm.com.tr", "joyturk.com.tr", "virginradioturkiye.com",
+
+    /* Power Group */
+    "powerapp.com.tr", "powerturk.com", "powerfm.com.tr", "powerlovefm.com.tr", "powerpop.com.tr",
+    "powerturkfm.com.tr", "powerxl.com.tr", "stream.powerapp.com.tr", "live.powerapp.com.tr",
+    "listen.powerapp.com.tr", "listener-power.com", "powergroup.com.tr",
+
+    /* Doğuş & Kral Group */
+    "kralmuzik.com.tr", "kralfm.com.tr", "kralpop.com.tr", "kralpoptv.com.tr",
+    "stream.kralmuzik.com.tr", "yayin.kralmuzik.com.tr", "kralmuzik.com",
+    "ntvradyo.com.tr", "radyovoyage.com",
+
+    /* Saran & Fenomen & Pal & TürkMedya & Other Major Networks */
+    "slowturk.net", "slowturk.com.tr", "radyotrafik.com", "radyospor.com", "radyospor.net",
+    "stream.slowturk.net", "yayin.slowturk.net",
+    "radyofenomen.com", "fenomenturk.com", "fenomenpop.com", "fenomenrap.com",
+    "stream.radyofenomen.com", "yayin.radyofenomen.com",
+    "alemfm.com.tr", "ligradyo.com.tr", "turkmedya.com.tr", "stream.alemfm.com.tr", "stream.ligradyo.com.tr",
+    "showradyo.com.tr", "radyoviva.com.tr", "stream.showradyo.com.tr", "stream.radyoviva.com.tr",
+    "bestfm.com.tr", "babaradyo.com", "stream.bestfm.com.tr", "stream.babaradyo.com",
+    "palfm.com.tr", "palstation.com.tr", "palnostalji.com.tr", "stream.palfm.com.tr",
+    "trtdinle.com", "radyo.trt.net.tr", "trtfm.trt.net.tr", "trtradyo1.trt.net.tr", "trtturku.trt.net.tr",
+    "diyanetradyo.com", "radyo7.com", "radyo7.com.tr", "tgrtradyo.com.tr", "acikradyo.com.tr",
+    "radyoeksen.com", "radyod.com", "cnnturkradyo.com", "radyoturkuvaz.com.tr", "asporradyo.com.tr",
+    "ahabradyo.com.tr", "vavradyo.com.tr", "damarfm.com", "arabeskfm.biz", "radyoalaturka.com.tr",
+    "radyoseymen.com.tr", "radyoseymen.com", "radyovatan.com.tr", "radyobilkent.com", "radyoodtu.com.tr",
+
+    /* Global Radio & Podcast Directory Platforms */
+    "tunein.com", "radiotime.com", "shoutcast.com", "radionomy.com",
+    "iheart.com", "iheartradio.com", "radio.net", "live365.com", "streema.com",
+    "zeno.fm", "zenomedia.com", "streamguys.com", "audiopump.co", "icecast.org",
+    "castbox.fm", "podbean.com", NULL
 };
 
 static const char *s_social_seeds[] = {
     "facebook.com", "fbcdn.net", "fbsbx.com", "meta.com",
     "instagram.com", "cdninstagram.com",
-    "tiktok.com", "tiktokcdn.com", "byteoversea.com", "musical.ly",
+    "tiktok.com", "tiktokcdn.com", "tiktokv.com", "byteoversea.com", "musical.ly",
     "twitter.com", "x.com", "twimg.com", "t.co",
     "linkedin.com", "licdn.com",
     "reddit.com", "redditmedia.com", "redd.it",
     "discord.com", "discord.gg", "discordapp.com", "discordapp.net",
     "snapchat.com", "sc-cdn.net", "pinterest.com", "pinimg.com",
     "telegram.org", "t.me", "whatsapp.com", "whatsapp.net",
-    "threads.net", "blueskyweb.xyz", "bsky.app", NULL
+    "threads.net", "blueskyweb.xyz", "bsky.app", "mastodon.social", NULL
 };
 
 static const char *s_gambling_seeds[] = {
     "betway.com", "unibet.com", "ladbrokes.com", "bet365.com", "bwin.com",
     "nesine.com", "misli.com", "bilyoner.com", "tuttur.com", "oley.com",
     "1xbet.com", "tempobet.com", "bets10.com", "mobilbahis.com", "superbetin.com",
-    "tipobet365.com", "pokerstars.com", "betfair.com", "williamhill.com", NULL
+    "tipobet365.com", "pokerstars.com", "betfair.com", "williamhill.com",
+    "casinomaxi.com", "casinometropol.com", "vdcasino.com", "parimatch.com", NULL
 };
 
 static const char *s_gaming_seeds[] = {
@@ -54,25 +103,33 @@ static const char *s_gaming_seeds[] = {
     "ea.com", "origin.com", "battle.net", "blizzard.com",
     "playstation.com", "sonyentertainmentnetwork.com", "xbox.com", "xboxlive.com",
     "supercell.com", "brawlstars.com", "clashofclans.com", "minecraft.net",
-    "mojang.com", "pubg.com", "krafton.com", NULL
+    "mojang.com", "pubg.com", "krafton.com", "garena.com", "ubisoft.com", NULL
 };
 
 static const char *s_adult_seeds[] = {
     "pornhub.com", "xvideos.com", "xnxx.com", "xhamster.com",
-    "redtube.com", "youporn.com", "onlyfans.com", NULL
+    "redtube.com", "youporn.com", "onlyfans.com", "chaturbate.com",
+    "stripchat.com", "livejasmin.com", "brazzers.com", "bangbros.com",
+    "bonga-cams.com", "cam4.com", "spankbang.com", "eporner.com", NULL
 };
 
 static const char *s_crypto_seeds[] = {
-    "binance.com", "coinbase.com", "kraken.com", "btcturk.com",
-    "paribu.com", "kucoin.com", "bybit.com", "okx.com", NULL
+    "binance.com", "binance.tr", "coinbase.com", "kraken.com", "btcturk.com",
+    "paribu.com", "kucoin.com", "bybit.com", "okx.com", "gate.io",
+    "bitfinex.com", "mexc.com", "huobi.com", "htx.com", "coingecko.com", "coinmarketcap.com", NULL
 };
 
 static const char *s_warez_seeds[] = {
-    "thepiratebay.org", "1337x.to", "torrentfreak.com", "rutracker.org", "zamunda.net", "rarbg.to", NULL
+    "thepiratebay.org", "1337x.to", "torrentfreak.com", "rutracker.org", "zamunda.net", "rarbg.to",
+    "yts.mx", "fitgirl-repacks.site", "dodi-repacks.site", "skidrowreloaded.com", "torrentgalaxy.to",
+    "fullprogramlarindir.net", "oyunindir.club", "saglamindir.net", NULL
 };
 
 static const char *s_bypass_seeds[] = {
-    "torproject.org", "nordvpn.com", "expressvpn.com", "surfshark.com", "protonvpn.com", "cloudflare-dns.com", NULL
+    "torproject.org", "nordvpn.com", "expressvpn.com", "surfshark.com", "protonvpn.com",
+    "cloudflare-dns.com", "dns.google", "cleanbrowsing.org", "adguard-dns.com",
+    "hide.me", "cyberghostvpn.com", "privateinternetaccess.com", "windscribe.com",
+    "psiphon.ca", "ultrasurf.us", "kproxy.com", "croxyproxy.com", "hideip.me", NULL
 };
 
 static const char *s_tailscale_seeds[] = {
@@ -89,16 +146,73 @@ static const char *s_openvpn_seeds[] = {
 };
 
 static const char *s_tor_seeds[] = {
-    "torproject.org", "bridges.torproject.org", "metrics.torproject.org", "dist.torproject.org", NULL
+    "torproject.org", "bridges.torproject.org", "metrics.torproject.org", "dist.torproject.org",
+    "onion.to", "onion.ws", "onion.pet", NULL
+};
+
+static const char *s_dating_seeds[] = {
+    "tinder.com", "badoo.com", "bumble.com", "okcupid.com", "match.com", "happn.com",
+    "hinge.co", "c2.me", "connected2.me", "siberalem.com", "gonuldensevenler.com",
+    "pembepanjur.com", "istanbul.net.tr", "lavinsta.com", "ask.fm", "twoo.com", NULL
+};
+
+static const char *s_ads_seeds[] = {
+    "doubleclick.net", "googlesyndication.com", "googleadservices.com", "adservice.google.com",
+    "adnxs.com", "criteo.com", "rubiconproject.com", "taboola.com", "outbrain.com",
+    "popads.net", "propellerads.com", "adroll.com", "pubmatic.com", "openx.net", NULL
+};
+
+static const char *s_shorteners_seeds[] = {
+    "bit.ly", "tinyurl.com", "t.co", "goo.gl", "ow.ly", "is.gd", "buff.ly",
+    "adf.ly", "bc.vc", "cutt.ly", "linktr.ee", "shorte.st", "shorturl.at", NULL
+};
+
+static const char *s_webmail_seeds[] = {
+    "mail.google.com", "outlook.live.com", "outlook.office.com", "mail.yahoo.com",
+    "mail.yandex.com.tr", "mail.yandex.ru", "mail.ru", "proton.me", "protonmail.com",
+    "zoho.com", "tutanota.com", "gmx.com", "fastmail.com", NULL
+};
+
+static const char *s_astrology_seeds[] = {
+    "faladdin.com", "binnazabla.com", "astrologi.org", "astrologia.com", "kahvefali.net",
+    "falim.com", "astrolojimerkezi.com", "astrology.com", "astro.com", "kaave.com", NULL
+};
+
+static const char *s_cheating_seeds[] = {
+    "odevyardim.com", "tezmerkezi.com", "tezdanismanlik.com", "odevyaptirma.com",
+    "makaleyazdirma.com", "chegg.com", "coursehero.com", "brainly.com", "eodev.com", NULL
+};
+
+static const char *s_security_seeds[] = {
+    "usom.gov.tr", "phishing.org", "malwaredomainlist.com", "badips.com",
+    "urlhaus.abuse.ch", "cybercrime-tracker.net", NULL
+};
+
+static const char *s_scam_fraud_seeds[] = {
+    "forex-dolandiriciligi.com", "kolaykazanc.com", "guvenli-yatirim.com",
+    "kripto-kazanc.org", "ikramiye-sorgula.com", NULL
+};
+
+static const char *s_drugs_weapons_seeds[] = {
+    "silkroad.io", "darknetmarket.org", "illegalarms.com", "buycannabis.to", NULL
+};
+
+static const char *s_hate_violence_seeds[] = {
+    "bestgore.com", "goregrish.com", "stormfront.org", "kaotic.com", NULL
+};
+
+static const char *s_cults_seeds[] = {
+    "adnanoktar.org", "harunyahya.org", "fetogercegi.com", "adnanoktargercekler.com", NULL
 };
 
 static const char *s_shopping_seeds[] = {
     "amazon.com", "amazon.com.tr", "aliexpress.com", "trendyol.com", "hepsiburada.com",
-    "n11.com", "ciceksepeti.com", "ebay.com", "temu.com", "shein.com", NULL
+    "n11.com", "ciceksepeti.com", "ebay.com", "temu.com", "shein.com", "morhipo.com", NULL
 };
 
 static const char *s_jobs_seeds[] = {
-    "kariyer.net", "yenibiris.com", "linkedin.com", "indeed.com", "glassdoor.com", NULL
+    "kariyer.net", "yenibiris.com", "linkedin.com", "indeed.com", "glassdoor.com",
+    "eleman.net", "secretcv.com", "iskur.gov.tr", NULL
 };
 
 static bool match_domain_suffix(const char *domain, const char *seed) {
@@ -123,11 +237,12 @@ static bool check_seed_list(const char *domain, const char **seeds) {
 }
 
 bool filter_is_in_category(const char *domain, const char *category) {
-    if (!domain || !category || !*category) return false;
+    if (!domain || !*domain || !category || !*category) return false;
 
-    if (strcasecmp(category, "streaming") == 0 || strcasecmp(category, "video") == 0)
+    if (strcasecmp(category, "streaming") == 0 || strcasecmp(category, "video") == 0 ||
+        strcasecmp(category, "radio") == 0 || strcasecmp(category, "audio") == 0)
         return check_seed_list(domain, s_streaming_seeds);
-    if (strcasecmp(category, "social") == 0)
+    if (strcasecmp(category, "social") == 0 || strcasecmp(category, "social_media") == 0)
         return check_seed_list(domain, s_social_seeds);
     if (strcasecmp(category, "gambling") == 0 || strcasecmp(category, "betting") == 0)
         return check_seed_list(domain, s_gambling_seeds);
@@ -137,9 +252,9 @@ bool filter_is_in_category(const char *domain, const char *category) {
         return check_seed_list(domain, s_adult_seeds);
     if (strcasecmp(category, "crypto") == 0)
         return check_seed_list(domain, s_crypto_seeds);
-    if (strcasecmp(category, "warez") == 0 || strcasecmp(category, "p2p") == 0)
+    if (strcasecmp(category, "warez") == 0 || strcasecmp(category, "p2p") == 0 || strcasecmp(category, "torrent") == 0)
         return check_seed_list(domain, s_warez_seeds);
-    if (strcasecmp(category, "bypass") == 0 || strcasecmp(category, "vpn") == 0)
+    if (strcasecmp(category, "bypass") == 0 || strcasecmp(category, "vpn") == 0 || strcasecmp(category, "proxy") == 0)
         return check_seed_list(domain, s_bypass_seeds);
     if (strcasecmp(category, "tailscale") == 0)
         return check_seed_list(domain, s_tailscale_seeds);
@@ -149,9 +264,31 @@ bool filter_is_in_category(const char *domain, const char *category) {
         return check_seed_list(domain, s_openvpn_seeds);
     if (strcasecmp(category, "tor") == 0)
         return check_seed_list(domain, s_tor_seeds);
+    if (strcasecmp(category, "dating") == 0)
+        return check_seed_list(domain, s_dating_seeds);
+    if (strcasecmp(category, "ads") == 0 || strcasecmp(category, "advertising") == 0)
+        return check_seed_list(domain, s_ads_seeds);
+    if (strcasecmp(category, "shorteners") == 0 || strcasecmp(category, "shortener") == 0)
+        return check_seed_list(domain, s_shorteners_seeds);
+    if (strcasecmp(category, "webmail") == 0 || strcasecmp(category, "mail") == 0)
+        return check_seed_list(domain, s_webmail_seeds);
+    if (strcasecmp(category, "astrology") == 0 || strcasecmp(category, "fal") == 0)
+        return check_seed_list(domain, s_astrology_seeds);
+    if (strcasecmp(category, "cheating") == 0 || strcasecmp(category, "homework") == 0)
+        return check_seed_list(domain, s_cheating_seeds);
+    if (strcasecmp(category, "security") == 0 || strcasecmp(category, "malware") == 0 || strcasecmp(category, "phishing") == 0)
+        return check_seed_list(domain, s_security_seeds);
+    if (strcasecmp(category, "scam_fraud") == 0 || strcasecmp(category, "scam") == 0 || strcasecmp(category, "fraud") == 0)
+        return check_seed_list(domain, s_scam_fraud_seeds);
+    if (strcasecmp(category, "drugs_weapons") == 0 || strcasecmp(category, "drugs") == 0 || strcasecmp(category, "weapons") == 0)
+        return check_seed_list(domain, s_drugs_weapons_seeds);
+    if (strcasecmp(category, "hate_violence") == 0 || strcasecmp(category, "violence") == 0 || strcasecmp(category, "hate") == 0)
+        return check_seed_list(domain, s_hate_violence_seeds);
+    if (strcasecmp(category, "cults") == 0 || strcasecmp(category, "cult") == 0)
+        return check_seed_list(domain, s_cults_seeds);
     if (strcasecmp(category, "shopping") == 0)
         return check_seed_list(domain, s_shopping_seeds);
-    if (strcasecmp(category, "jobs") == 0)
+    if (strcasecmp(category, "jobs") == 0 || strcasecmp(category, "jobsearch") == 0)
         return check_seed_list(domain, s_jobs_seeds);
 
     return false;

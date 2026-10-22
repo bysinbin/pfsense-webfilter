@@ -35,11 +35,26 @@ static bool bsearch_domain(const char *domain) {
             line_end++;
         }
 
-        size_t len = line_end - line_start;
-        int cmp = strncasecmp(domain, s_feed_mmap + line_start, dom_len < len ? dom_len : len);
-        if (cmp == 0) {
-            if (dom_len == len) return true;
-            cmp = (dom_len < len) ? -1 : 1;
+        /* Trim spaces and tabs */
+        long actual_start = line_start;
+        while (actual_start < line_end && (s_feed_mmap[actual_start] == ' ' || s_feed_mmap[actual_start] == '\t')) {
+            actual_start++;
+        }
+        long actual_end = line_end;
+        while (actual_end > actual_start && (s_feed_mmap[actual_end - 1] == ' ' || s_feed_mmap[actual_end - 1] == '\r' || s_feed_mmap[actual_end - 1] == '\t')) {
+            actual_end--;
+        }
+
+        size_t len = (actual_end > actual_start) ? (size_t)(actual_end - actual_start) : 0;
+        int cmp = 0;
+        if (len == 0) {
+            cmp = 1;
+        } else {
+            cmp = strncasecmp(domain, s_feed_mmap + actual_start, dom_len < len ? dom_len : len);
+            if (cmp == 0) {
+                if (dom_len == len) return true;
+                cmp = (dom_len < len) ? -1 : 1;
+            }
         }
 
         if (cmp < 0) {
