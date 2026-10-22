@@ -51,11 +51,11 @@ if [ -d "${SCRIPT_DIR}/daemon" ]; then
     cd "${SCRIPT_DIR}/daemon"
 
     CC_BIN=""
-    if which clang >/dev/null 2>&1; then
+    if command -v clang >/dev/null 2>&1 || which clang >/dev/null 2>&1; then
         CC_BIN="clang"
-    elif which cc >/dev/null 2>&1; then
+    elif command -v cc >/dev/null 2>&1 || which cc >/dev/null 2>&1; then
         CC_BIN="cc"
-    elif which gcc >/dev/null 2>&1; then
+    elif command -v gcc >/dev/null 2>&1 || which gcc >/dev/null 2>&1; then
         CC_BIN="gcc"
     fi
 
