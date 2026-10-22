@@ -185,6 +185,54 @@ static size_t forward_dns_query(const uint8_t *query, size_t qlen, uint8_t *resp
     return (n > 0) ? (size_t)n : 0;
 }
 
+static bool match_domain_exact_or_sub(const char *domain, const char *base) {
+    if (!domain || !base) return false;
+    if (strcasecmp(domain, base) == 0) return true;
+    size_t dlen = strlen(domain);
+    size_t blen = strlen(base);
+    if (dlen > blen && domain[dlen - blen - 1] == '.' && strcasecmp(domain + (dlen - blen), base) == 0) {
+        return true;
+    }
+    return false;
+}
+
+static bool check_safesearch_rewrite(const char *domain, uint16_t qtype, const uint8_t *query, size_t qlen,
+                                     uint8_t *resp, size_t max_resp, size_t question_end, size_t *out_len) {
+    if (qtype != 1) return false; /* IPv4 A query only */
+
+    const char *target_ip = NULL;
+
+    /* Google Search SafeSearch */
+    if (g_filter.config.enable_safesearch) {
+        if (strcasestr(domain, "google.") && !strcasestr(domain, "googlevideo") && !strcasestr(domain, "googleapis")) {
+            if (strncasecmp(domain, "www.google.", 11) == 0 || strncasecmp(domain, "google.", 7) == 0) {
+                target_ip = "216.239.38.120"; /* forcesafesearch.google.com */
+            }
+        } else if (match_domain_exact_or_sub(domain, "bing.com")) {
+            target_ip = "204.79.197.220"; /* strict.bing.com */
+        } else if (match_domain_exact_or_sub(domain, "duckduckgo.com")) {
+            target_ip = "52.142.124.215"; /* safe.duckduckgo.com */
+        }
+    }
+
+    /* YouTube Restricted Mode */
+    if (g_filter.config.enable_youtube_restricted && !target_ip) {
+        if (match_domain_exact_or_sub(domain, "youtube.com") ||
+            match_domain_exact_or_sub(domain, "youtubei.googleapis.com") ||
+            match_domain_exact_or_sub(domain, "youtube.googleapis.com") ||
+            match_domain_exact_or_sub(domain, "www.youtube-nocookie.com")) {
+            target_ip = "216.239.38.120"; /* restrict.youtube.com */
+        }
+    }
+
+    if (target_ip) {
+        *out_len = build_sinkhole_response(query, qlen, resp, max_resp, question_end, qtype, target_ip);
+        return true;
+    }
+
+    return false;
+}
+
 static void *dns_worker_loop(void *arg) {
     (void)arg;
     uint8_t req_buf[DNS_MAX_PACKET];
@@ -225,6 +273,17 @@ static void *dns_worker_loop(void *arg) {
 
         g_filter.total_queries++;
 
+        /* Check SafeSearch / YouTube Restricted Enforcement */
+        size_t safe_len = 0;
+        size_t question_end = (size_t)qname_pos + 4;
+        if (question_end > (size_t)n) question_end = n;
+        if (check_safesearch_rewrite(domain, qtype, req_buf, n, resp_buf, sizeof(resp_buf), question_end, &safe_len)) {
+            g_filter.total_passed++;
+            sendto(s_dns_sock, resp_buf, safe_len, 0, (struct sockaddr *)&client_addr, client_len);
+            log_event("DNS_PASS", client_ip, domain, "SAFESEARCH", "Enforced SafeSearch VIP");
+            continue;
+        }
+
         char action[32] = "pass";
         char reason[128] = "Allowed";
         bool is_blocked = filter_match_client(domain, client_ip, action, sizeof(action), reason, sizeof(reason));
@@ -239,9 +298,12 @@ static void *dns_worker_loop(void *arg) {
             }
 
             /* Sinkhole response */
-            const char *sink_ip = g_filter.config.sinkhole_ip[0] ? g_filter.config.sinkhole_ip : "0.0.0.0";
-            size_t question_end = (size_t)qname_pos + 4;
-            if (question_end > (size_t)n) question_end = n;
+            const char *sink_ip = "0.0.0.0";
+            if (g_filter.config.enable_block_page && g_filter.config.block_page_ip[0]) {
+                sink_ip = g_filter.config.block_page_ip;
+            } else if (g_filter.config.sinkhole_ip[0]) {
+                sink_ip = g_filter.config.sinkhole_ip;
+            }
             size_t rlen = build_sinkhole_response(req_buf, n, resp_buf, sizeof(resp_buf), question_end, qtype, sink_ip);
             if (rlen > 0) {
                 sendto(s_dns_sock, resp_buf, rlen, 0, (struct sockaddr *)&client_addr, client_len);

@@ -98,7 +98,22 @@ typedef struct {
     char stats_file[256];
     bool block_doh;           /* Block DoH / DoT bypass */
     bool block_vpn_protocols; /* Block WireGuard, OpenVPN, Tor, Tailscale via PF */
+    bool enable_safesearch;           /* Force SafeSearch on Google, Bing, DuckDuckGo */
+    bool enable_youtube_restricted;   /* Force YouTube Restricted Mode */
+    bool enable_block_page;           /* Redirect blocked HTTP to Block Page */
+    char block_page_ip[64];           /* IP where block page is hosted e.g. 192.168.2.1 */
 } global_config_t;
+
+#define MAX_AD_USERS 1024
+#define MAX_AD_GROUPS_PER_USER 16
+
+typedef struct {
+    char ip[48];
+    char username[64];
+    char display_name[64];
+    char groups[MAX_AD_GROUPS_PER_USER][64];
+    int group_count;
+} ad_user_entry_t;
 
 typedef struct {
     global_config_t config;
@@ -113,6 +128,9 @@ typedef struct {
     filter_rule_t rules[MAX_FILTER_RULES];
     int rule_count;
 
+    ad_user_entry_t ad_users[MAX_AD_USERS];
+    int ad_user_count;
+
     uint64_t total_queries;
     uint64_t total_blocked;
     uint64_t total_passed;
@@ -125,6 +143,8 @@ extern volatile bool g_running;
 /* --- Engine Function Prototypes --- */
 
 /* Configuration & State */
+int filter_load_ad_users(const char *config_dir);
+const ad_user_entry_t *filter_lookup_ad_user(const char *client_ip);
 int filter_init(const char *config_dir);
 void filter_cleanup(void);
 int filter_load_config(const char *config_dir);

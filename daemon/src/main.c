@@ -141,6 +141,18 @@ int filter_load_config(const char *config_dir) {
     item = cJSON_GetObjectItem(root, "log_queries");
     if (item && cJSON_IsBool(item)) g_filter.config.log_queries = cJSON_IsTrue(item);
 
+    item = cJSON_GetObjectItem(root, "enable_safesearch");
+    if (item && cJSON_IsBool(item)) g_filter.config.enable_safesearch = cJSON_IsTrue(item);
+
+    item = cJSON_GetObjectItem(root, "enable_youtube_restricted");
+    if (item && cJSON_IsBool(item)) g_filter.config.enable_youtube_restricted = cJSON_IsTrue(item);
+
+    item = cJSON_GetObjectItem(root, "enable_block_page");
+    if (item && cJSON_IsBool(item)) g_filter.config.enable_block_page = cJSON_IsTrue(item);
+
+    item = cJSON_GetObjectItem(root, "block_page_ip");
+    if (item && item->valuestring) strncpy(g_filter.config.block_page_ip, item->valuestring, sizeof(g_filter.config.block_page_ip) - 1);
+
     pthread_mutex_unlock(&g_filter.lock);
     cJSON_Delete(root);
 
@@ -201,7 +213,73 @@ int filter_load_config(const char *config_dir) {
         fclose(rfp);
     }
 
+    filter_load_ad_users(config_dir);
     log_msg(LOG_LEVEL_INFO, "Configuration loaded: %d rules active", g_filter.rule_count);
+    return 0;
+}
+
+int filter_load_ad_users(const char *config_dir) {
+    char ad_file[512];
+    snprintf(ad_file, sizeof(ad_file), "%s/ad_users.json", config_dir);
+    FILE *fp = fopen(ad_file, "r");
+    if (!fp) return -1;
+
+    fseek(fp, 0, SEEK_END);
+    long sz = ftell(fp);
+    fseek(fp, 0, SEEK_SET);
+
+    char *buf = malloc(sz + 1);
+    if (!buf) {
+        fclose(fp);
+        return -1;
+    }
+
+    fread(buf, 1, sz, fp);
+    buf[sz] = '\0';
+    fclose(fp);
+
+    cJSON *root = cJSON_Parse(buf);
+    free(buf);
+    if (!root || !cJSON_IsObject(root)) {
+        if (root) cJSON_Delete(root);
+        return -1;
+    }
+
+    pthread_mutex_lock(&g_filter.lock);
+    g_filter.ad_user_count = 0;
+
+    cJSON *user_obj = NULL;
+    cJSON_ArrayForEach(user_obj, root) {
+        if (g_filter.ad_user_count >= MAX_AD_USERS) break;
+        const char *ip_key = user_obj->string;
+        if (!ip_key || !*ip_key) continue;
+
+        ad_user_entry_t *entry = &g_filter.ad_users[g_filter.ad_user_count++];
+        memset(entry, 0, sizeof(ad_user_entry_t));
+        strncpy(entry->ip, ip_key, sizeof(entry->ip) - 1);
+
+        cJSON *v = cJSON_GetObjectItem(user_obj, "username");
+        if (v && v->valuestring) strncpy(entry->username, v->valuestring, sizeof(entry->username) - 1);
+
+        v = cJSON_GetObjectItem(user_obj, "display_name");
+        if (v && v->valuestring) strncpy(entry->display_name, v->valuestring, sizeof(entry->display_name) - 1);
+
+        cJSON *grp_arr = cJSON_GetObjectItem(user_obj, "groups");
+        if (grp_arr && cJSON_IsArray(grp_arr)) {
+            int num_groups = cJSON_GetArraySize(grp_arr);
+            for (int g = 0; g < num_groups && g < MAX_AD_GROUPS_PER_USER; g++) {
+                cJSON *grp = cJSON_GetArrayItem(grp_arr, g);
+                if (grp && grp->valuestring) {
+                    strncpy(entry->groups[entry->group_count++], grp->valuestring, sizeof(entry->groups[0]) - 1);
+                }
+            }
+        }
+    }
+
+    pthread_mutex_unlock(&g_filter.lock);
+    cJSON_Delete(root);
+
+    log_msg(LOG_LEVEL_INFO, "AD SSO user cache loaded: %d authenticated sessions", g_filter.ad_user_count);
     return 0;
 }
 

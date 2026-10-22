@@ -428,6 +428,16 @@ bool filter_is_domain_allowed(const char *domain) {
     return false;
 }
 
+const ad_user_entry_t *filter_lookup_ad_user(const char *client_ip) {
+    if (!client_ip || !*client_ip) return NULL;
+    for (int i = 0; i < g_filter.ad_user_count; i++) {
+        if (strcmp(g_filter.ad_users[i].ip, client_ip) == 0) {
+            return &g_filter.ad_users[i];
+        }
+    }
+    return NULL;
+}
+
 bool filter_match_client(const char *domain, const char *client_ip,
                          char *action_out, size_t max_action,
                          char *reason_out, size_t max_reason) {
@@ -449,6 +459,8 @@ bool filter_match_client(const char *domain, const char *client_ip,
     char client_mac[32] = {0};
     bsd_arp_lookup_mac(client_ip, client_mac, sizeof(client_mac));
 
+    const ad_user_entry_t *ad_user = filter_lookup_ad_user(client_ip);
+
     pthread_mutex_lock(&g_filter.lock);
 
     /* 2. Granular Rules Evaluation */
@@ -468,6 +480,15 @@ bool filter_match_client(const char *domain, const char *client_ip,
             client_matched = match_ip_range(client_u32, r->src_value);
         } else if (strcmp(r->src_type, "mac") == 0 && client_mac[0]) {
             client_matched = (strcasecmp(r->src_value, client_mac) == 0);
+        } else if (strcmp(r->src_type, "user") == 0 && ad_user) {
+            client_matched = (strcasecmp(r->src_value, ad_user->username) == 0);
+        } else if (strcmp(r->src_type, "group") == 0 && ad_user) {
+            for (int g = 0; g < ad_user->group_count; g++) {
+                if (strcasecmp(r->src_value, ad_user->groups[g]) == 0) {
+                    client_matched = true;
+                    break;
+                }
+            }
         }
 
         if (!client_matched) continue;
