@@ -95,7 +95,11 @@ function poseafilter_resync() {
         "pf_table_sync" => isset($pconfig['pf_table_sync']),
         "pf_table_name" => "poseafilter_blocked",
         "log_queries" => isset($pconfig['log_queries']),
-        "block_doh" => isset($pconfig['block_doh'])
+        "block_doh" => isset($pconfig['block_doh']),
+        "enable_safesearch" => isset($pconfig['enable_safesearch']),
+        "enable_youtube_restricted" => isset($pconfig['enable_youtube_restricted']),
+        "enable_block_page" => isset($pconfig['enable_block_page']),
+        "block_page_ip" => !empty($pconfig['block_page_ip']) ? $pconfig['block_page_ip'] : "192.168.2.1"
     ];
 
     file_put_contents(POSEAFILTER_CONF_DIR . '/config.json', json_encode($cfg, JSON_PRETTY_PRINT));

@@ -91,6 +91,40 @@
             <type>checkbox</type>
             <default_value>on</default_value>
         </field>
+        <field>
+            <name>SafeSearch &amp; Content Enforcement</name>
+            <type>listtopic</type>
+        </field>
+        <field>
+            <fielddescr>Enforce SafeSearch</fielddescr>
+            <fieldname>enable_safesearch</fieldname>
+            <description>Force SafeSearch VIP on Google (forcesafesearch.google.com), Bing (strict.bing.com), and DuckDuckGo (safe.duckduckgo.com).</description>
+            <type>checkbox</type>
+            <default_value>on</default_value>
+        </field>
+        <field>
+            <fielddescr>YouTube Restricted Mode</fielddescr>
+            <fieldname>enable_youtube_restricted</fieldname>
+            <description>Force YouTube Restricted Mode VIP (restrict.youtube.com) to filter mature videos and comments network-wide.</description>
+            <type>checkbox</type>
+        </field>
+        <field>
+            <name>Block Page Settings</name>
+            <type>listtopic</type>
+        </field>
+        <field>
+            <fielddescr>Enable Branded Block Page</fielddescr>
+            <fieldname>enable_block_page</fieldname>
+            <description>Redirect blocked HTTP requests to the Posea branded corporate block page instead of 0.0.0.0 connection refused.</description>
+            <type>checkbox</type>
+        </field>
+        <field>
+            <fielddescr>Block Page Host IP</fielddescr>
+            <fieldname>block_page_ip</fieldname>
+            <description>The IP address where the block page web server is listening (e.g. 192.168.2.1).</description>
+            <type>input</type>
+            <default_value>192.168.2.1</default_value>
+        </field>
     </fields>
     <custom_php_install_command>
         poseafilter_install();
