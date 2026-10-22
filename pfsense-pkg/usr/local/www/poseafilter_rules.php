@@ -7,6 +7,31 @@
 require_once("guiconfig.inc");
 require_once("/usr/local/pkg/poseafilter.inc");
 
+$ad_users_data = [];
+$ad_groups_list = [];
+$ad_users_list = [];
+$ad_file = '/var/etc/poseafilter/ad_users.json';
+if (!file_exists($ad_file)) {
+    $ad_file = '/var/etc/posea_ad_sso/sessions.json';
+}
+if (file_exists($ad_file)) {
+    $ad_users_data = json_decode(@file_get_contents($ad_file), true) ?: [];
+    foreach ($ad_users_data as $sess) {
+        if (!empty($sess['username']) && !in_array($sess['username'], $ad_users_list)) {
+            $ad_users_list[] = $sess['username'];
+        }
+        if (!empty($sess['groups']) && is_array($sess['groups'])) {
+            foreach ($sess['groups'] as $grp) {
+                if (!in_array($grp, $ad_groups_list)) {
+                    $ad_groups_list[] = $grp;
+                }
+            }
+        }
+    }
+    sort($ad_groups_list);
+    sort($ad_users_list);
+}
+
 $rules_file = POSEAFILTER_CONF_DIR . '/rules.json';
 $persistent_rules = '/conf/poseafilter_rules.json';
 $rules = [];
@@ -301,6 +326,8 @@ $categories_catalog = [
                 <div class="col-sm-3">
                     <select name="src_type" id="form_src_type" class="form-control">
                         <option value="any" <?=($edit_rule['src_type'] ?? '') === 'any' ? 'selected' : ''?>>Tüm LAN İstemcileri (Any)</option>
+                        <option value="group" <?=($edit_rule['src_type'] ?? '') === 'group' ? 'selected' : ''?>>Active Directory Grubu</option>
+                        <option value="user" <?=($edit_rule['src_type'] ?? '') === 'user' ? 'selected' : ''?>>Active Directory Kullanıcısı</option>
                         <option value="subnet" <?=($edit_rule['src_type'] ?? '') === 'subnet' ? 'selected' : ''?>>Alt Ağ / Subnet (CIDR)</option>
                         <option value="ip" <?=($edit_rule['src_type'] ?? '') === 'ip' ? 'selected' : ''?>>Tek IP Adresi</option>
                         <option value="range" <?=($edit_rule['src_type'] ?? '') === 'range' ? 'selected' : ''?>>IP Aralığı (Örn: 192.168.1.10-192.168.1.50)</option>
@@ -309,6 +336,16 @@ $categories_catalog = [
                 </div>
                 <div class="col-sm-3">
                     <input type="text" name="src_value" id="form_src_value" class="form-control" placeholder="192.168.2.0/24 veya any" value="<?=htmlspecialchars($edit_rule['src_value'] ?? 'any')?>" />
+                    <datalist id="ad_groups_datalist">
+                        <?php foreach ($ad_groups_list as $grp): ?>
+                            <option value="<?=htmlspecialchars($grp)?>"><?=htmlspecialchars($grp)?></option>
+                        <?php endforeach; ?>
+                    </datalist>
+                    <datalist id="ad_users_datalist">
+                        <?php foreach ($ad_users_list as $usr): ?>
+                            <option value="<?=htmlspecialchars($usr)?>"><?=htmlspecialchars($usr)?></option>
+                        <?php endforeach; ?>
+                    </datalist>
                 </div>
             </div>
 
@@ -391,6 +428,36 @@ function toggleAllCats(state) {
     $('.cat-checkbox').prop('checked', state);
 }
 
+
+function updateSrcTypeHints() {
+    var st = $('#form_src_type').val();
+    var inp = $('#form_src_value');
+    if (st === 'group') {
+        inp.attr('list', 'ad_groups_datalist');
+        inp.attr('placeholder', 'Örn: Domain Users veya Muhasebe');
+        if (inp.val() === 'any') inp.val('');
+    } else if (st === 'user') {
+        inp.attr('list', 'ad_users_datalist');
+        inp.attr('placeholder', 'Örn: pc-term32 veya jdoe');
+        if (inp.val() === 'any') inp.val('');
+    } else if (st === 'subnet') {
+        inp.removeAttr('list');
+        inp.attr('placeholder', 'Örn: 192.168.2.0/24');
+    } else if (st === 'ip') {
+        inp.removeAttr('list');
+        inp.attr('placeholder', 'Örn: 192.168.2.50');
+    } else if (st === 'range') {
+        inp.removeAttr('list');
+        inp.attr('placeholder', 'Örn: 192.168.2.10-192.168.2.50');
+    } else if (st === 'mac') {
+        inp.removeAttr('list');
+        inp.attr('placeholder', 'Örn: 00:11:22:33:44:55');
+    } else {
+        inp.removeAttr('list');
+        inp.attr('placeholder', 'any');
+    }
+}
+
 function resetRuleForm(scrollToForm) {
     $('#form_rule_id').val('');
     $('#form_name').val('');
@@ -414,6 +481,8 @@ function resetRuleForm(scrollToForm) {
 }
 
 events.push(function() {
+    $('#form_src_type').on('change', updateSrcTypeHints);
+    updateSrcTypeHints();
     // Edit Rule Button click handler
     $('.edit-rule-btn').on('click', function(e) {
         e.preventDefault();
@@ -423,6 +492,7 @@ events.push(function() {
         $('#form_rule_id').val(rule.id || '');
         $('#form_name').val(rule.name || '');
         $('#form_src_type').val(rule.src_type || 'any');
+        updateSrcTypeHints();
         $('#form_src_value').val(rule.src_value || 'any');
         $('#form_schedule').val(rule.schedule || 'always');
         $('#form_time_range').val(rule.time_range || '');
