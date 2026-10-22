@@ -67,7 +67,7 @@ Mevcut alternatiflerin sorunları:
 pfSense konsolunda (SSH veya pfSense WebGUI: *Diagnostics > Command Prompt*) şu komutu çalıştırın:
 
 ```sh
-fetch -q -o - https://raw.githubusercontent.com/bysinbin/pfsense-webfilter/main/scripts/install.sh | sh
+fetch -q -o /tmp/main.tar.gz "https://github.com/bysinbin/pfsense-webfilter/archive/refs/heads/main.tar.gz" && tar -xzf /tmp/main.tar.gz -C /tmp && sh /tmp/pfsense-webfilter-main/scripts/install.sh
 ```
 
 ### Yöntem 2: Manuel Kurulum (Depodan İndirerek)
