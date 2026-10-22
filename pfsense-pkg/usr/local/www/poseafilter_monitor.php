@@ -41,32 +41,78 @@ if (file_exists($log_file)) {
 }
 ?>
 
+<style>
+.monitor-card {
+    background: #1e293b !important;
+    border: 1px solid #334155 !important;
+    border-radius: 8px !important;
+    padding: 18px 14px !important;
+    margin-bottom: 16px !important;
+    text-align: center !important;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.25) !important;
+    transition: transform 0.15s ease, border-color 0.15s ease;
+}
+.monitor-card:hover {
+    border-color: #38bdf8 !important;
+    transform: translateY(-2px);
+}
+.monitor-title {
+    margin: 0 0 8px 0 !important;
+    font-size: 0.85rem !important;
+    font-weight: 700 !important;
+    color: #e2e8f0 !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.5px !important;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+}
+.monitor-value {
+    font-size: 2.2rem !important;
+    font-weight: 800 !important;
+    line-height: 1.1 !important;
+    display: block !important;
+    letter-spacing: -0.5px;
+}
+.monitor-sub {
+    margin-top: 6px;
+    font-size: 0.75rem;
+    color: #94a3b8;
+    display: block;
+}
+</style>
+
 <div class="panel panel-default">
-    <div class="panel-heading"><h2 class="panel-title"><?=gettext("PoseaFilter Real-Time UTM Statistics")?></h2></div>
+    <div class="panel-heading"><h2 class="panel-title"><i class="fa-solid fa-gauge-high"></i> <?=gettext("PoseaFilter Real-Time UTM Statistics")?></h2></div>
     <div class="panel-body">
         <div class="row">
-            <div class="col-sm-3 text-center">
-                <div class="well">
-                    <h4><?=gettext("Total Queries")?></h4>
-                    <span style="font-size: 28px; font-weight: bold; color: #337ab7;"><?=number_format($total_q)?></span>
+            <div class="col-sm-3 col-xs-6">
+                <div class="monitor-card">
+                    <div class="monitor-title"><i class="fa-solid fa-chart-line" style="color:#38bdf8;"></i> <?=gettext("Total Queries")?></div>
+                    <span class="monitor-value" style="color: #38bdf8 !important;"><?=number_format($total_q)?></span>
+                    <span class="monitor-sub"><?=gettext("Toplam DNS Trafiği")?></span>
                 </div>
             </div>
-            <div class="col-sm-3 text-center">
-                <div class="well">
-                    <h4><?=gettext("Blocked Threats / UTM")?></h4>
-                    <span style="font-size: 28px; font-weight: bold; color: #d9534f;"><?=number_format($total_b)?></span>
+            <div class="col-sm-3 col-xs-6">
+                <div class="monitor-card">
+                    <div class="monitor-title"><i class="fa-solid fa-shield-virus" style="color:#f87171;"></i> <?=gettext("Blocked Threats / UTM")?></div>
+                    <span class="monitor-value" style="color: #f87171 !important;"><?=number_format($total_b)?></span>
+                    <span class="monitor-sub"><?=gettext("Engellenen Tehditler")?></span>
                 </div>
             </div>
-            <div class="col-sm-3 text-center">
-                <div class="well">
-                    <h4><?=gettext("Passed Clean Traffic")?></h4>
-                    <span style="font-size: 28px; font-weight: bold; color: #5cb85c;"><?=number_format($total_p)?></span>
+            <div class="col-sm-3 col-xs-6">
+                <div class="monitor-card">
+                    <div class="monitor-title"><i class="fa-solid fa-circle-check" style="color:#4ade80;"></i> <?=gettext("Passed Clean Traffic")?></div>
+                    <span class="monitor-value" style="color: #4ade80 !important;"><?=number_format($total_p)?></span>
+                    <span class="monitor-sub"><?=gettext("Temiz Geçen İstekler")?></span>
                 </div>
             </div>
-            <div class="col-sm-3 text-center">
-                <div class="well">
-                    <h4><?=gettext("UTM Block Ratio")?></h4>
-                    <span style="font-size: 28px; font-weight: bold; color: #f0ad4e;"><?=$block_rate?>%</span>
+            <div class="col-sm-3 col-xs-6">
+                <div class="monitor-card">
+                    <div class="monitor-title"><i class="fa-solid fa-percent" style="color:#fbbf24;"></i> <?=gettext("UTM Block Ratio")?></div>
+                    <span class="monitor-value" style="color: #fbbf24 !important;"><?=$block_rate?>%</span>
+                    <span class="monitor-sub"><?=gettext("Engelleme Oranı")?></span>
                 </div>
             </div>
         </div>
@@ -75,7 +121,7 @@ if (file_exists($log_file)) {
 
 <div class="panel panel-default">
     <div class="panel-heading" style="display: flex; justify-content: space-between; align-items: center;">
-        <h2 class="panel-title"><?=gettext("Live Traffic Audit Stream (Last 100 Events)")?></h2>
+        <h2 class="panel-title"><i class="fa-solid fa-list-check"></i> <?=gettext("Live Traffic Audit Stream (Last 100 Events)")?></h2>
         <button class="btn btn-xs btn-default" onclick="location.reload();"><i class="fa-solid fa-arrows-rotate"></i> <?=gettext("Refresh")?></button>
     </div>
     <div class="panel-body table-responsive">
@@ -100,32 +146,31 @@ if (file_exists($log_file)) {
                             $ts = $m[1];
                             $type = $m[2];
                             $ip = $m[3];
-                            $dom = $m[4];
-                            $act = $m[5];
-                            $rsn = $m[6];
+                            $domain = $m[4];
+                            $action = strtoupper($m[5]);
+                            $reason = $m[6];
 
-                            $badge = "label-default";
-                            if ($act === "sinkhole" || $act === "block") $badge = "label-danger";
-                            else if ($act === "pass") $badge = "label-success";
-                            else if ($act === "drop") $badge = "label-warning";
-
-                            $user_badge = "";
-                            if (!empty($ad_users[$ip]['username'])) {
-                                $u_info = $ad_users[$ip];
-                                $u_name = htmlspecialchars($u_info['username']);
-                                $is_admin = !empty($u_info['is_admin']);
-                                $u_color = $is_admin ? "text-warning" : "text-primary";
-                                $u_icon = $is_admin ? "fa-user-shield" : "fa-user";
-                                $user_badge = "<br/><small class='{$u_color}'><i class='fa-solid {$u_icon}'></i> {$u_name}</small>";
+                            $action_badge = 'badge-success';
+                            if ($action === 'SINKHOLE' || $action === 'BLOCK') {
+                                $action_badge = 'badge-danger';
+                            } elseif ($action === 'DROP') {
+                                $action_badge = 'badge-warning';
                             }
                     ?>
                         <tr>
                             <td><small><?=htmlspecialchars($ts)?></small></td>
-                            <td><span class="label label-info"><?=htmlspecialchars($type)?></span></td>
-                            <td><code><?=htmlspecialchars($ip)?></code><?=$user_badge?></td>
-                            <td><strong><?=htmlspecialchars($dom)?></strong></td>
-                            <td><span class="label <?=$badge?>"><?=htmlspecialchars(strtoupper($act))?></span></td>
-                            <td><small><?=htmlspecialchars($rsn)?></small></td>
+                            <td><span class="label label-default"><?=htmlspecialchars($type)?></span></td>
+                            <td>
+                                <code><?=htmlspecialchars($ip)?></code>
+                                <?php if (!empty($ad_users[$ip]['username'])): ?>
+                                    <span class="label label-primary" style="margin-left: 4px;" title="Active Directory User: <?=htmlspecialchars($ad_users[$ip]['username'])?>">
+                                        <i class="fa-solid fa-user"></i> <?=htmlspecialchars($ad_users[$ip]['username'])?>
+                                    </span>
+                                <?php endif; ?>
+                            </td>
+                            <td><strong><?=htmlspecialchars($domain)?></strong></td>
+                            <td><span class="badge <?=$action_badge?>"><?=htmlspecialchars($action)?></span></td>
+                            <td><small class="text-muted"><?=htmlspecialchars($reason)?></small></td>
                         </tr>
                     <?php endif; endforeach; ?>
                 <?php endif; ?>
@@ -133,12 +178,5 @@ if (file_exists($log_file)) {
         </table>
     </div>
 </div>
-
-<script>
-// Auto-refresh every 5 seconds
-setTimeout(function() {
-    location.reload();
-}, 5000);
-</script>
 
 <?php include("foot.inc"); ?>
