@@ -21,7 +21,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $custom_html = $_POST['custom_html'] ?? '';
         file_put_contents($custom_file, $custom_html);
         @file_put_contents($var_file, $custom_html);
-        // Also update master self-heal directory
         @copy($custom_file, '/conf/posea_system/pkg/poseafilter_block_custom.html');
 
         $action_msg = "Özel Engelleme Sayfası HTML tasarımı başarıyla kaydedildi ve tüm ağda devreye alındı!";
@@ -68,7 +67,7 @@ display_top_tabs($tab_array);
 }
 .code-editor {
     width: 100%;
-    min-height: 380px;
+    min-height: 280px;
     background: #090d16;
     color: #e2e8f0;
     font-family: 'Consolas', 'Courier New', monospace;
@@ -101,7 +100,7 @@ display_top_tabs($tab_array);
 }
 .preview-box {
     width: 100%;
-    height: 480px;
+    height: 440px;
     background: #ffffff;
     border: 1px solid #334155;
     border-radius: 8px;
@@ -144,17 +143,17 @@ display_top_tabs($tab_array);
             <!-- Placeholders Info -->
             <div style="background: #0f172a; border: 1px solid #334155; border-radius: 6px; padding: 12px 16px; margin-bottom: 18px; font-size: 12px;">
                 <strong style="color: #f8fafc;"><i class="fa-solid fa-wand-magic-sparkles" style="color:#f59e0b; margin-right: 5px;"></i>Kullanabileceğiniz Dinamik Değişkenler:</strong>
-                <span style="color:#94a3b8; margin-left: 6px;">(Tıklayarak panoya kopyalayabilirsiniz)</span><br/>
+                <span style="color:#94a3b8; margin-left: 6px;">(Tıklayarak panoya kopyalayabilir veya editöre ekleyebilirsiniz)</span><br/>
                 <div style="margin-top: 8px;">
-                    <span class="var-pill" onclick="insertVar('{DOMAIN}')" title="Hedef Alan Adı">{DOMAIN}</span>
-                    <span class="var-pill" onclick="insertVar('{CLIENT_IP}')" title="İstemci IP Adresi">{CLIENT_IP}</span>
-                    <span class="var-pill" onclick="insertVar('{USER}')" title="AD Kullanıcı Adı">{USER}</span>
-                    <span class="var-pill" onclick="insertVar('{DISPLAY_NAME}')" title="Kullanıcı Adı Soyadı">{DISPLAY_NAME}</span>
-                    <span class="var-pill" onclick="insertVar('{DEPARTMENT}')" title="Departman">{DEPARTMENT}</span>
-                    <span class="var-pill" onclick="insertVar('{GROUPS}')" title="AD Güvenlik Grupları">{GROUPS}</span>
-                    <span class="var-pill" onclick="insertVar('{REASON}')" title="Engelleme Nedeni/Kuralı">{REASON}</span>
-                    <span class="var-pill" onclick="insertVar('{TIME}')" title="Tarih ve Saat">{TIME}</span>
-                    <span class="var-pill" onclick="insertVar('{GATEWAY}')" title="Güvenlik Duvarı Adı">{GATEWAY}</span>
+                    <span class="var-pill" data-var="{DOMAIN}" title="Hedef Alan Adı">{DOMAIN}</span>
+                    <span class="var-pill" data-var="{CLIENT_IP}" title="İstemci IP Adresi">{CLIENT_IP}</span>
+                    <span class="var-pill" data-var="{USER}" title="AD Kullanıcı Adı">{USER}</span>
+                    <span class="var-pill" data-var="{DISPLAY_NAME}" title="Kullanıcı Adı Soyadı">{DISPLAY_NAME}</span>
+                    <span class="var-pill" data-var="{DEPARTMENT}" title="Departman">{DEPARTMENT}</span>
+                    <span class="var-pill" data-var="{GROUPS}" title="AD Güvenlik Grupları">{GROUPS}</span>
+                    <span class="var-pill" data-var="{REASON}" title="Engelleme Nedeni/Kuralı">{REASON}</span>
+                    <span class="var-pill" data-var="{TIME}" title="Tarih ve Saat">{TIME}</span>
+                    <span class="var-pill" data-var="{GATEWAY}" title="Güvenlik Duvarı Adı">{GATEWAY}</span>
                 </div>
             </div>
 
@@ -169,15 +168,15 @@ display_top_tabs($tab_array);
                         <button type="submit" class="btn btn-success" style="font-weight: 700; padding: 9px 20px;">
                             <i class="fa-solid fa-floppy-disk" style="margin-right: 6px;"></i> HTML'i Kaydet &amp; Devreye Al
                         </button>
-                        <button type="button" class="btn btn-primary" onclick="loadStarterTemplate();" style="margin-left: 6px;">
+                        <button type="button" class="btn btn-primary" id="btnLoadStarter" style="margin-left: 6px;">
                             <i class="fa-solid fa-file-import" style="margin-right: 5px;"></i> Örnek Şablonu Yükle
                         </button>
-                        <button type="button" class="btn btn-info" onclick="updateLivePreview();" style="margin-left: 6px;">
+                        <button type="button" class="btn btn-info" id="btnUpdatePreview" style="margin-left: 6px;">
                             <i class="fa-solid fa-eye" style="margin-right: 5px;"></i> Önizlemeyi Güncelle
                         </button>
                     </div>
                     <div>
-                        <button type="button" class="btn btn-danger" onclick="resetDefault();">
+                        <button type="button" class="btn btn-danger" id="btnResetDefault">
                             <i class="fa-solid fa-trash-can" style="margin-right: 5px;"></i> Varsayılana Sıfırla
                         </button>
                     </div>
@@ -189,16 +188,16 @@ display_top_tabs($tab_array);
         <div class="editor-panel">
             <h3><i class="fa-solid fa-desktop"></i> Canlı Önizleme (Live Preview)</h3>
             <p style="color: #94a3b8; font-size: 13px; margin-bottom: 14px;">
-                Aşağıdaki çerçeve, yukarıda yazdığınız HTML kodunun örnek değişkenler ({DOMAIN}=<code>casino.com</code>, {CLIENT_IP}=<code>192.168.2.105</code>, {USER}=<code>ahmet.yilmaz</code>) ile kullanıcı ekranında nasıl görüneceğini anlık gösterir.
+                Aşağıdaki çerçeve, yukarıda yazdığınız HTML kodunun örnek değişkenler ({DOMAIN}=<code>canliradyodinle.fm</code>, {CLIENT_IP}=<code>192.168.2.105</code>, {USER}=<code>ahmet.yilmaz</code>) ile kullanıcı ekranında nasıl görüneceğini anlık gösterir.
             </p>
             <iframe id="previewFrame" class="preview-box"></iframe>
         </div>
     </div>
 </div>
 
-<script>
-// Starter clean corporate template
-var starterTemplate = `<!DOCTYPE html>
+<!-- Hidden Starter Template Data to avoid raw JS string parsing bugs -->
+<textarea id="starter_template_data" style="display:none;">
+<!DOCTYPE html>
 <html lang="tr">
 <head>
     <meta charset="utf-8">
@@ -229,7 +228,6 @@ var starterTemplate = `<!DOCTYPE html>
         }
         .icon {
             font-size: 48px;
-            color: #ef4444;
             margin-bottom: 16px;
         }
         h1 {
@@ -292,66 +290,90 @@ var starterTemplate = `<!DOCTYPE html>
         <a href="javascript:history.back();" class="btn">Geri Dön</a>
     </div>
 </body>
-</html>`;
+</html>
+</textarea>
 
-function insertVar(varName) {
-    var txt = document.getElementById('custom_html');
-    var start = txt.selectionStart;
-    var end = txt.selectionEnd;
-    var text = txt.value;
-    txt.value = text.substring(0, start) + varName + text.substring(end);
-    txt.focus();
-    txt.selectionStart = txt.selectionEnd = start + varName.length;
-    updateLivePreview();
-}
+<script type="text/javascript">
+//<![CDATA[
+events.push(function() {
+    function getStarter() {
+        return $('#starter_template_data').val().trim();
+    }
 
-function loadStarterTemplate() {
-    if (confirm('Örnek şablon editöre yüklensin mi? (Mevcut metniniz değişecektir)')) {
-        document.getElementById('custom_html').value = starterTemplate;
+    function updateLivePreview() {
+        var raw = $('#custom_html').val();
+        if (!raw || !raw.trim()) {
+            raw = getStarter();
+        }
+
+        var now = new Date();
+        var timeStr = now.getFullYear() + '-' + 
+                      String(now.getMonth()+1).padStart(2,'0') + '-' + 
+                      String(now.getDate()).padStart(2,'0') + ' ' + 
+                      String(now.getHours()).padStart(2,'0') + ':' + 
+                      String(now.getMinutes()).padStart(2,'0') + ':' + 
+                      String(now.getSeconds()).padStart(2,'0');
+
+        var rendered = raw
+            .replace(/\{DOMAIN\}/g, 'canliradyodinle.fm')
+            .replace(/\{CLIENT_IP\}/g, '192.168.2.105')
+            .replace(/\{USER\}/g, 'ahmet.yilmaz')
+            .replace(/\{DISPLAY_NAME\}/g, 'Ahmet Yılmaz')
+            .replace(/\{DEPARTMENT\}/g, 'Finans & Muhasebe')
+            .replace(/\{GROUPS\}/g, 'Domain Users, Muhasebe')
+            .replace(/\{REASON\}/g, 'Çevrimiçi Radyo & Müzik Politikası')
+            .replace(/\{TIME\}/g, timeStr)
+            .replace(/\{DATE\}/g, timeStr.split(' ')[0])
+            .replace(/\{GATEWAY\}/g, 'fw.sener.local');
+
+        var frame = document.getElementById('previewFrame');
+        if (frame) {
+            var doc = frame.contentDocument || frame.contentWindow.document;
+            doc.open();
+            doc.write(rendered);
+            doc.close();
+        }
+    }
+
+    // Variable pill clicks
+    $('.var-pill').on('click', function() {
+        var varName = $(this).data('var');
+        var txt = document.getElementById('custom_html');
+        var start = txt.selectionStart;
+        var end = txt.selectionEnd;
+        var text = txt.value;
+        txt.value = text.substring(0, start) + varName + text.substring(end);
+        txt.focus();
+        txt.selectionStart = txt.selectionEnd = start + varName.length;
         updateLivePreview();
-    }
-}
+    });
 
-function resetDefault() {
-    if (confirm('Özel HTML silinerek varsayılan Posea şablonuna dönülsün mü?')) {
-        var form = document.getElementById('htmlForm');
-        form.querySelector('input[name="act"]').value = 'reset';
-        form.submit();
-    }
-}
+    $('#btnLoadStarter').on('click', function() {
+        if (confirm('Örnek şablon editöre yüklensin mi? (Mevcut metniniz değişecektir)')) {
+            $('#custom_html').val(getStarter());
+            updateLivePreview();
+        }
+    });
 
-function updateLivePreview() {
-    var raw = document.getElementById('custom_html').value;
-    if (!raw.trim()) {
-        raw = starterTemplate;
-    }
+    $('#btnUpdatePreview').on('click', function() {
+        updateLivePreview();
+    });
 
-    var now = new Date();
-    var timeStr = now.getFullYear() + '-' + String(now.getMonth()+1).padStart(2,'0') + '-' + String(now.getDate()).padStart(2,'0') + ' ' + String(now.getHours()).padStart(2,'0') + ':' + String(now.getMinutes()).padStart(2,'0') + ':' + String(now.getSeconds()).padStart(2,'0');
+    $('#btnResetDefault').on('click', function() {
+        if (confirm('Özel HTML silinerek varsayılan Posea şablonuna dönülsün mü?')) {
+            $('#htmlForm').find('input[name="act"]').val('reset');
+            $('#htmlForm').submit();
+        }
+    });
 
-    var rendered = raw
-        .replace(/{DOMAIN}/g, 'casino.com')
-        .replace(/{CLIENT_IP}/g, '192.168.2.105')
-        .replace(/{USER}/g, 'ahmet.yilmaz')
-        .replace(/{DISPLAY_NAME}/g, 'Ahmet Yılmaz')
-        .replace(/{DEPARTMENT}/g, 'Finans & Muhasebe')
-        .replace(/{GROUPS}/g, 'Domain Users, Muhasebe')
-        .replace(/{REASON}/g, 'Kumar ve Bahis Siteleri Politikası')
-        .replace(/{TIME}/g, timeStr)
-        .replace(/{DATE}/g, timeStr.split(' ')[0])
-        .replace(/{GATEWAY}/g, 'fw.sener.local');
+    $('#custom_html').on('input', function() {
+        updateLivePreview();
+    });
 
-    var frame = document.getElementById('previewFrame');
-    var doc = frame.contentDocument || frame.contentWindow.document;
-    doc.open();
-    doc.write(rendered);
-    doc.close();
-}
-
-document.addEventListener('DOMContentLoaded', function() {
-    updateLivePreview();
-    document.getElementById('custom_html').addEventListener('input', updateLivePreview);
+    // Initial render
+    setTimeout(updateLivePreview, 100);
 });
+//]]>
 </script>
 
 <?php include("foot.inc"); ?>

@@ -215,18 +215,64 @@ function poseafilter_configure_nginx_port80() {
     if (!file_exists($conf_path)) return;
 
     $conf = file_get_contents($conf_path);
-    if (strpos($conf, 'poseafilter_block.php') !== false) return; // Already configured
 
-    $old_server = "server {\n\t\tlisten 80;\n\t\tlisten [::]:80;\n\t\treturn 301 https://\$http_host";
-    if (strpos($conf, $old_server) === false) {
-        $old_server = "server {\n\t\tlisten 80;\n\t\tlisten [::]:80;";
+    // If both 80 and 443 are already configured with block handler, nothing to do
+    if (strpos($conf, 'poseafilter_block.php') !== false && 
+        strpos($conf, 'listen 443 ssl;') !== false && 
+        strpos($conf, 'return 301 https://$http_host:448$request_uri;') !== false) {
+        return;
     }
 
-    $new_block = "server {\n\t\tlisten 80;\n\t\tlisten [::]:80;\n\t\troot \"/usr/local/www/\";\n\n\t\tlocation / {\n\t\t\tif (\$http_host ~* \"^(192\\.168\\.|10\\.|172\\.16\\.|127\\.0\\.0\\.1|185\\.189\\.54\\.89|fw\\.)\") {\n\t\t\t\treturn 301 https://\$http_host:448\$request_uri;\n\t\t\t}\n\t\t\tfastcgi_pass   unix:/var/run/php-fpm.socket;\n\t\t\tfastcgi_param  SCRIPT_FILENAME  /usr/local/www/poseafilter_block.php;\n\t\t\tinclude        /usr/local/etc/nginx/fastcgi_params;\n\t\t}\n\t}";
+    $marker = 'listen 80;';
+    $pos = strpos($conf, $marker);
+    if ($pos === false) return;
 
-    if (preg_match('/server\s*\{\s*listen\s*80;[^\}]*return\s*301[^\}]*\}/s', $conf, $m)) {
-        $conf = str_replace($m[0], $new_block, $conf);
-        file_put_contents($conf_path, $conf);
-        @shell_exec('/usr/local/sbin/nginx -t -c ' . escapeshellarg($conf_path) . ' && killall -HUP nginx 2>/dev/null');
-    }
+    $server_pos = strrpos(substr($conf, 0, $pos), 'server {');
+    if ($server_pos === false) return;
+
+    $base_conf = rtrim(substr($conf, 0, $server_pos));
+
+    $mgmt_regex = '^(192\\.168\\.|10\\.|172\\.16\\.|127\\.0\\.0\\.1|185\\.189\\.54\\.89|fw\\.)';
+
+    $new_blocks = "
+	server {
+		listen 80;
+		listen [::]:80;
+		root \"/usr/local/www/\";
+
+		location / {
+		if (\$http_host ~* \"{$mgmt_regex}\") {
+				return 301 https://\$http_host:448\$request_uri;
+			}
+			fastcgi_pass   unix:/var/run/php-fpm.socket;
+			fastcgi_param  SCRIPT_FILENAME  /usr/local/www/poseafilter_block.php;
+			include        /usr/local/etc/nginx/fastcgi_params;
+		}
+	}
+
+	server {
+		listen 443 ssl;
+		listen [::]:443 ssl;
+
+		ssl_certificate         /var/etc/cert.crt;
+		ssl_certificate_key     /var/etc/cert.key;
+		ssl_protocols           TLSv1.2 TLSv1.3;
+
+		root \"/usr/local/www/\";
+
+		location / {
+		if (\$http_host ~* \"{$mgmt_regex}\") {
+				return 301 https://\$http_host:448\$request_uri;
+			}
+			fastcgi_pass   unix:/var/run/php-fpm.socket;
+			fastcgi_param  SCRIPT_FILENAME  /usr/local/www/poseafilter_block.php;
+			include        /usr/local/etc/nginx/fastcgi_params;
+		}
+	}
+}
+";
+
+    $final_conf = $base_conf . "\n" . trim($new_blocks) . "\n";
+    file_put_contents($conf_path, $final_conf);
+    @shell_exec('/usr/local/sbin/nginx -t -c ' . escapeshellarg($conf_path) . ' && killall -HUP nginx 2>/dev/null');
 }
