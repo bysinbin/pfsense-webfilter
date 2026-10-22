@@ -14,6 +14,7 @@ $tab_array[] = array(gettext("General Settings"), false, "/pkg_edit.php?xml=pose
 $tab_array[] = array(gettext("Feeds & Categories"), false, "/poseafilter_feeds.php");
 $tab_array[] = array(gettext("UTM Rules"), false, "/poseafilter_rules.php");
 $tab_array[] = array(gettext("Live Monitor & Logs"), true, "/poseafilter_monitor.php");
+$tab_array[] = array(gettext("Suite Yedek & Bildirim"), false, "/posea_suite_backup.php");
 display_top_tabs($tab_array);
 
 $stats = poseafilter_get_stats();

@@ -29,6 +29,10 @@
             <text>Live Monitor &amp; Logs</text>
             <url>/poseafilter_monitor.php</url>
         </tab>
+        <tab>
+            <text>Suite Yedek &amp; Bildirim</text>
+            <url>/posea_suite_backup.php</url>
+        </tab>
     </tabs>
     <fields>
         <field>
@@ -124,6 +128,35 @@
             <description>The IP address where the block page web server is listening (e.g. 192.168.2.1).</description>
             <type>input</type>
             <default_value>192.168.2.1</default_value>
+        </field>
+        <field>
+            <name>Tehdit Bildirim ve Alarm Ayarları (Telegram)</name>
+            <type>listtopic</type>
+        </field>
+        <field>
+            <fielddescr>Telegram Tehdit Bildirimleri</fielddescr>
+            <fieldname>enable_telegram</fieldname>
+            <description>USOM, zararlı yazılım ve siber tehditler engellendiğinde anında Telegram grubuna alarm gönderir.</description>
+            <type>checkbox</type>
+        </field>
+        <field>
+            <fielddescr>Telegram Bot Token</fielddescr>
+            <fieldname>telegram_bot_token</fieldname>
+            <description>@BotFather üzerinden alınan Telegram Bot Token (Örn: 123456789:ABCdefGhIJKlmNoPQRsTUVwxyZ).</description>
+            <type>input</type>
+        </field>
+        <field>
+            <fielddescr>Telegram Chat ID</fielddescr>
+            <fieldname>telegram_chat_id</fieldname>
+            <description>Bildirimin gideceği Telegram Kullanıcı veya Grup ID'si (Örn: -100123456789 veya 987654321).</description>
+            <type>input</type>
+        </field>
+        <field>
+            <fielddescr>Bildirim Sıklık Limiti (Saniye)</fielddescr>
+            <fieldname>notify_rate_limit</fieldname>
+            <description>Aynı istemci/domain için bildirim tekrarını engelleyen bekleme süresi (Varsayılan: 60).</description>
+            <type>input</type>
+            <default_value>60</default_value>
         </field>
     </fields>
     <custom_php_install_command>
