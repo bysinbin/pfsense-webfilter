@@ -39,6 +39,11 @@ function poseafilter_install() {
         file_put_contents(POSEAFILTER_CONF_DIR . '/config.json', json_encode($default_cfg, JSON_PRETTY_PRINT));
     }
 
+    /* Restore persistent rules from /conf if /var was wiped */
+    if (!file_exists(POSEAFILTER_CONF_DIR . '/rules.json') && file_exists('/conf/poseafilter_rules.json')) {
+        @copy('/conf/poseafilter_rules.json', POSEAFILTER_CONF_DIR . '/rules.json');
+    }
+
     /* Generate initial sample rules */
     if (!file_exists(POSEAFILTER_CONF_DIR . '/rules.json')) {
         $default_rules = [

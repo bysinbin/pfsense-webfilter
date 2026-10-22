@@ -8,9 +8,13 @@ require_once("guiconfig.inc");
 require_once("/usr/local/pkg/poseafilter.inc");
 
 $rules_file = POSEAFILTER_CONF_DIR . '/rules.json';
+$persistent_rules = '/conf/poseafilter_rules.json';
 $rules = [];
 if (file_exists($rules_file)) {
     $rules = json_decode(file_get_contents($rules_file), true) ?: [];
+} elseif (file_exists($persistent_rules)) {
+    $rules = json_decode(file_get_contents($persistent_rules), true) ?: [];
+    @copy($persistent_rules, $rules_file);
 }
 
 /* Handle Actions */
@@ -27,6 +31,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
         $rules = $new_rules;
         file_put_contents($rules_file, json_encode($rules, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
+        @file_put_contents($persistent_rules, json_encode($rules, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
         poseafilter_reload();
         header("Location: /poseafilter_rules.php");
         exit;
@@ -41,6 +46,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         }
         file_put_contents($rules_file, json_encode($rules, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
+        @file_put_contents($persistent_rules, json_encode($rules, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
         poseafilter_reload();
         header("Location: /poseafilter_rules.php");
         exit;
@@ -96,6 +102,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         file_put_contents($rules_file, json_encode($rules, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
+        @file_put_contents($persistent_rules, json_encode($rules, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
         poseafilter_reload();
         header("Location: /poseafilter_rules.php");
         exit;
