@@ -14,6 +14,24 @@ $var_file = '/var/etc/poseafilter/block_custom.html';
 $action_msg = '';
 $action_type = 'info';
 
+// Ensure /usr/local/www/SENER_UTM_Root_CA.crt is always published for 1-command PowerShell deployment
+global $config;
+$pub_ca_crt = null;
+if (isset($config["ca"]) && is_array($config["ca"])) {
+    foreach ($config["ca"] as $c) {
+        if ($c["descr"] === "SENER" || !empty($c["crt"])) {
+            $pub_ca_crt = base64_decode($c["crt"]);
+            break;
+        }
+    }
+}
+if (!$pub_ca_crt && file_exists('/var/etc/poseafilter/ca.crt')) {
+    $pub_ca_crt = @file_get_contents('/var/etc/poseafilter/ca.crt');
+}
+if ($pub_ca_crt && (!file_exists('/usr/local/www/SENER_UTM_Root_CA.crt') || @file_get_contents('/usr/local/www/SENER_UTM_Root_CA.crt') !== $pub_ca_crt)) {
+    @file_put_contents('/usr/local/www/SENER_UTM_Root_CA.crt', $pub_ca_crt);
+}
+
 // 1. Handle CA Certificate Download
 if (isset($_GET['act']) && $_GET['act'] === 'download_ca') {
     global $config;
@@ -248,6 +266,28 @@ display_top_tabs($tab_array);
 
             <!-- Collapsible GPO Dağıtım Kılavuzu -->
             <div id="gpoGuidePanel" style="display: none; margin-top: 20px; background: #090d16; border: 1px solid #334155; border-radius: 8px; padding: 18px; font-size: 13px;">
+                <div style="background: #111827; border: 1px solid #10b981; border-radius: 8px; padding: 14px 16px; margin-bottom: 18px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 8px;">
+                        <h4 style="color: #10b981; margin: 0; font-size: 14px; font-weight: 700;">
+                            <i class="fa-solid fa-terminal" style="margin-right: 6px;"></i> ⚡ Tek Komutla Otomatik Dağıtım (GPO Konsolu Açmadan - PowerShell Yönetici):
+                        </h4>
+                        <button type="button" class="btn btn-xs btn-success" onclick="navigator.clipboard.writeText(document.getElementById('psOneLiner').innerText); this.innerHTML='<i class=\'fa-solid fa-check\'></i> Kopyalandı!';" style="font-weight: 700; padding: 4px 10px;">
+                            <i class="fa-solid fa-copy"></i> Komutu Kopyala
+                        </button>
+                    </div>
+                    <p style="color: #94a3b8; font-size: 12px; margin: 0 0 8px 0;">
+                        Domain Controller (<code>SENERDC</code>) üzerinde <strong>PowerShell (Yönetici Olarak)</strong> açıp aşağıdaki tek satırlık komutu yapıştırın. Sertifikayı güvenlik duvarından otomatik indirir ve <code>sener.local</code> etki alanındaki tüm bilgisayarların Güvenilen Kök Sertifika deposuna anında dağıtır:
+                    </p>
+                    <pre id="psOneLiner" style="background: #030712; color: #38bdf8; border: 1px solid #1e293b; padding: 10px 12px; border-radius: 6px; font-size: 12px; overflow-x: auto; margin: 0; white-space: pre-wrap; word-break: break-all;">[Net.ServicePointManager]::ServerCertificateValidationCallback={$true}; Invoke-WebRequest -Uri "https://192.168.1.1:448/SENER_UTM_Root_CA.crt" -OutFile "$env:TEMP\SENER_CA.crt"; certutil -dspublish -f "$env:TEMP\SENER_CA.crt" RootCA; certutil -addstore -f "Root" "$env:TEMP\SENER_CA.crt"; gpupdate /force</pre>
+                    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; margin-top: 10px;">
+                        <span style="color: #94a3b8; font-size: 11px;"><i class="fa-solid fa-laptop" style="margin-right: 4px;"></i> Domain'de olmayan tekil bir bilgisayara yüklemek için:</span>
+                        <button type="button" class="btn btn-xs btn-info" onclick="navigator.clipboard.writeText(document.getElementById('psSinglePc').innerText); this.innerHTML='<i class=\'fa-solid fa-check\'></i> Kopyalandı!';" style="font-weight: 600; padding: 2px 8px;">
+                            <i class="fa-solid fa-copy"></i> Tekil PC Komutunu Kopyala
+                        </button>
+                    </div>
+                    <pre id="psSinglePc" style="background: #030712; color: #a7f3d0; border: 1px solid #1e293b; padding: 8px 10px; border-radius: 6px; font-size: 11px; overflow-x: auto; margin: 6px 0 0 0; white-space: pre-wrap; word-break: break-all;">[Net.ServicePointManager]::ServerCertificateValidationCallback={$true}; Invoke-WebRequest -Uri "https://192.168.1.1:448/SENER_UTM_Root_CA.crt" -OutFile "$env:TEMP\SENER_CA.crt"; certutil -addstore -f "Root" "$env:TEMP\SENER_CA.crt"</pre>
+                </div>
+
                 <h4 style="color: #38bdf8; margin: 0 0 12px 0; font-size: 14px; font-weight: 700;">
                     <i class="fa-brands fa-windows" style="margin-right: 6px;"></i> Windows Server (SENERDC) GPO ile 4 Adımda Kök Sertifika Dağıtımı:
                 </h4>
