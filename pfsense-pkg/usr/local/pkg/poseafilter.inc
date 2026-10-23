@@ -228,6 +228,31 @@ function poseafilter_save_block_settings($settings) {
     @copy($file, '/conf/posea_system/pkg/poseafilter_block_settings.json');
 }
 
+function poseafilter_ensure_sni_cert($domain) {
+    $certs_dir = '/var/etc/poseafilter/dynamic_certs';
+    if (!is_dir($certs_dir)) @mkdir($certs_dir, 0755, true);
+    $domain = preg_replace('/[^a-zA-Z0-9.-]/', '', strtolower(trim($domain)));
+    if (empty($domain)) return;
+    $crt_file = "{$certs_dir}/{$domain}.crt";
+    if (file_exists($crt_file) && filesize($crt_file) > 100) return;
+
+    $ca_crt = '/var/etc/poseafilter/ca.crt';
+    $ca_key = '/var/etc/poseafilter/ca.key';
+    $shared_key = '/var/etc/poseafilter/shared.key';
+    if (!file_exists($shared_key)) {
+        @shell_exec("openssl genrsa -out {$shared_key} 2048 2>/dev/null");
+    }
+    if (!file_exists($ca_crt) || !file_exists($ca_key)) return;
+
+    $cnf_file = "/tmp/{$domain}.cnf";
+    $csr_file = "/tmp/{$domain}.csr";
+    $cnf = "[req]\ndistinguished_name = req_distinguished_name\nreq_extensions = v3_req\nprompt = no\n[req_distinguished_name]\nC = TR\nST = Bursa\nL = Bursa\nO = SENER\nOU = Posea UTM Dynamic SSL\nCN = {$domain}\n[v3_req]\nkeyUsage = digitalSignature, keyEncipherment\nextendedKeyUsage = serverAuth\nsubjectAltName = @alt_names\n[alt_names]\nDNS.1 = {$domain}\n";
+    file_put_contents($cnf_file, $cnf);
+    @shell_exec("openssl req -new -nodes -key {$shared_key} -out {$csr_file} -config {$cnf_file} 2>/dev/null && openssl x509 -req -in {$csr_file} -CA {$ca_crt} -CAkey {$ca_key} -CAcreateserial -out {$crt_file} -days 365 -extensions v3_req -extfile {$cnf_file} 2>/dev/null");
+    @unlink($cnf_file);
+    @unlink($csr_file);
+}
+
 function poseafilter_configure_nginx_port80() {
     $conf_path = '/var/etc/nginx-webConfigurator.conf';
     if (!file_exists($conf_path)) return;
@@ -266,8 +291,8 @@ function poseafilter_configure_nginx_port80() {
 
     // 2. Port 443 SSL Block Server (Active only if https_mode == 'block_page')
     if ($https_mode === 'block_page') {
-        $cert_file = file_exists('/var/etc/poseafilter/posea_block.crt') ? '/var/etc/poseafilter/posea_block.crt' : '/var/etc/cert.crt';
-        $key_file = file_exists('/var/etc/poseafilter/posea_block.key') ? '/var/etc/poseafilter/posea_block.key' : '/var/etc/cert.key';
+        $cert_file = '/var/etc/poseafilter/dynamic_certs/$ssl_server_name.crt';
+        $key_file = '/var/etc/poseafilter/shared.key';
 
         $new_blocks .= "
 
