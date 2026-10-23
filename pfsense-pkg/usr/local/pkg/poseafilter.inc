@@ -136,8 +136,7 @@ function poseafilter_resync() {
  * Automatically injected into pfSense PF ruleset
  */
 function poseafilter_reload() {
-    mwexec(POSEAFILTER_RC . " reload");
-    mwexec("/usr/bin/killall -HUP poseafilterd 2>/dev/null");
+    mwexec(POSEAFILTER_RC . " restart");
     mwexec("/sbin/pfctl -t poseafilter_blocked -T flush 2>/dev/null");
 }
 
