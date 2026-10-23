@@ -26,22 +26,6 @@
             <url>/poseafilter_rules.php</url>
         </tab>
         <tab>
-            <text>PoseaBand (QoS)</text>
-            <url>/poseaband.php</url>
-        </tab>
-        <tab>
-            <text>PoseaInsight</text>
-            <url>/poseainsight.php</url>
-        </tab>
-        <tab>
-            <text>PoseaApp</text>
-            <url>/poseaapp.php</url>
-        </tab>
-        <tab>
-            <text>PoseaAccess</text>
-            <url>/poseaaccess.php</url>
-        </tab>
-        <tab>
             <text>Live Monitor &amp; Logs</text>
             <url>/poseafilter_monitor.php</url>
         </tab>

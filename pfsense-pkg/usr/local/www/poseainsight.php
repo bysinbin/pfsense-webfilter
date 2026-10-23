@@ -203,21 +203,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-$pgtitle = array(gettext("Services"), gettext("PoseaFilter"), gettext("PoseaInsight (Trafik İstihbaratı)"));
+$pgtitle = array(gettext("Status"), gettext("PoseaInsight (Trafik Analitiği & İstihbarat)"));
 include("head.inc");
 
-// Top Tabs
 $tab_array = array();
-$tab_array[] = array(gettext("General Settings"), false, "/pkg_edit.php?xml=poseafilter.xml");
-$tab_array[] = array(gettext("Feeds & Categories"), false, "/poseafilter_feeds.php");
-$tab_array[] = array(gettext("UTM Rules"), false, "/poseafilter_rules.php");
 $tab_array[] = array(gettext("PoseaBand (QoS)"), false, "/poseaband.php");
 $tab_array[] = array(gettext("PoseaInsight"), true, "/poseainsight.php");
 $tab_array[] = array(gettext("PoseaApp"), false, "/poseaapp.php");
 $tab_array[] = array(gettext("PoseaAccess"), false, "/poseaaccess.php");
-$tab_array[] = array(gettext("Live Monitor"), false, "/poseafilter_monitor.php");
-$tab_array[] = array(gettext("Engelleme Sayfası"), false, "/poseafilter_blockpage.php");
-$tab_array[] = array(gettext("Suite Yedek"), false, "/posea_suite_backup.php");
 display_top_tabs($tab_array);
 
 if ($savemsg) {
