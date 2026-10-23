@@ -41,17 +41,34 @@ if (empty($category) || empty($reason)) {
     if (file_exists($log_file)) {
         $lines = @file($log_file, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
         if ($lines) {
-            $recent = array_slice($lines, -50);
-            for ($i = count($recent) - 1; $i >= 0; $i--) {
-                $line = $recent[$i];
-                if (strpos($line, $client_ip) !== false && strpos($line, 'DNS_BLOCK') !== false) {
-                    // Sample line: [2026-10-23T00:21:28] [DNS_BLOCK] IP: 192.168.2.222 | Domain: self.events.data.microsoft.com | Action: SINKHOLE | Reason: Threat / UTM Feed (USOM/OISD)
-                    if (preg_match('/Domain:\s*([^|]+)\s*\|\s*Action:\s*[^|]+\s*\|\s*Reason:\s*(.+)$/i', $line, $m)) {
-                        if (empty($domain) || $domain === 'Bilinmeyen / Kısıtlı Domain') {
-                            $domain = trim($m[1]);
+            $recent = array_slice($lines, -100);
+            $clean_dom = preg_replace('/^www\./i', '', strtolower($domain));
+            
+            // Pass 1: Try finding match with exact domain
+            if (!empty($clean_dom) && $clean_dom !== 'bilinmeyen domain') {
+                for ($i = count($recent) - 1; $i >= 0; $i--) {
+                    $line = $recent[$i];
+                    if (strpos($line, 'DNS_BLOCK') !== false && stripos($line, $clean_dom) !== false) {
+                        if (preg_match('/Domain:\s*([^|]+)\s*\|\s*Action:\s*[^|]+\s*\|\s*Reason:\s*(.+)$/i', $line, $m)) {
+                            $reason = trim($m[2]);
+                            break;
                         }
-                        $reason = trim($m[2]);
-                        break;
+                    }
+                }
+            }
+            
+            // Pass 2: Fallback to matching client_ip if reason still empty
+            if (empty($reason)) {
+                for ($i = count($recent) - 1; $i >= 0; $i--) {
+                    $line = $recent[$i];
+                    if (strpos($line, 'DNS_BLOCK') !== false && strpos($line, $client_ip) !== false) {
+                        if (preg_match('/Domain:\s*([^|]+)\s*\|\s*Action:\s*[^|]+\s*\|\s*Reason:\s*(.+)$/i', $line, $m)) {
+                            if (empty($domain) || $domain === 'Bilinmeyen / Kısıtlı Domain') {
+                                $domain = trim($m[1]);
+                            }
+                            $reason = trim($m[2]);
+                            break;
+                        }
                     }
                 }
             }
@@ -61,6 +78,108 @@ if (empty($category) || empty($reason)) {
 
 if (empty($reason)) {
     $reason = 'Kurumsal UTM Güvenlik ve İçerik Filtresi Politikası';
+}
+
+// Extract Rule name if present (e.g. Rule '1111' (Block))
+$rule_name = '';
+if (preg_match("/Rule\s*'([^']+)'/i", $reason, $m)) {
+    $rule_name = $m[1];
+}
+
+// Category mapping and auto-detection
+$category_definitions = [
+    'streaming' => [
+        'title' => 'Çevrimiçi Müzik & Radyo (Streaming)',
+        'keywords' => ['radyo', 'radio', 'canliradyo', 'fm', 'stream', 'spotify', 'soundcloud', 'music', 'kralfm', 'powerapp', 'karnaval', 'alemfm', 'bestfm', 'superfm', 'virginradio', 'youtube', 'youtu.be', 'netflix', 'twitch', 'tiktok', 'dailymotion', 'vimeo', 'deezer', 'fizy']
+    ],
+    'crypto' => [
+        'title' => 'Kripto Para & Borsa (Crypto)',
+        'keywords' => ['crypto', 'coin', 'binance', 'btc', 'eth', 'paribu', 'btcturk', 'kucoin', 'kraken', 'coinbase', 'gate.io', 'bybit', 'mexc', 'bitfinex', 'blockchain', 'bitexen']
+    ],
+    'gaming' => [
+        'title' => 'Çevrimiçi Oyunlar & Platformlar (Gaming)',
+        'keywords' => ['game', 'epicgames', 'steam', 'steampowered', 'riot', 'leagueoflegends', 'roblox', 'pubg', 'blizzard', 'origin', 'ea.com', 'ubisoft', 'xbox', 'playstation', 'discord', 'valorant', 'battle.net']
+    ],
+    'gambling' => [
+        'title' => 'Kumar ve Şans Oyunları (Gambling)',
+        'keywords' => ['bet', 'casino', 'kumar', 'iddaa', 'nesine', 'misli', 'slot', 'bahis', 'poker', 'rulet', 'bilyoner', 'tuttur', 'oley', 'superbet', '1xbet', 'tempobet', 'betboo', 'tipobet', 'sahabet', 'matbet']
+    ],
+    'social' => [
+        'title' => 'Sosyal Medya & Ağlar (Social Media)',
+        'keywords' => ['facebook', 'instagram', 'twitter', 'x.com', 'linkedin', 'pinterest', 'snapchat', 'reddit', 'threads.net']
+    ],
+    'bypass' => [
+        'title' => 'VPN, Proxy & Tünelleme (Bypass)',
+        'keywords' => ['vpn', 'proxy', 'proton', 'ultrasurf', 'psiphon', 'warp', 'cloudflarewarp', 'tailscale', 'wireguard', 'openvpn', 'nordvpn', 'expressvpn', 'surfshark', 'torproject', 'hidemyass', 'tunnelbear']
+    ],
+    'warez' => [
+        'title' => 'Korsan İçerik & Torrent / P2P (Warez)',
+        'keywords' => ['torrent', 'warez', 'crack', 'pirate', 'rarbg', '1337x', 'zamunda', 'yts', 'fitgirl', 'torrentoyun', 'fullprogramlar']
+    ],
+    'dating' => [
+        'title' => 'Arkadaşlık & Tanışma (Dating)',
+        'keywords' => ['tinder', 'badoo', 'happn', 'dating', 'tanisma', 'arkadaslik', 'bumble', 'okcupid', 'siberalem']
+    ],
+    'adult' => [
+        'title' => 'Yetişkin ve Müstehcen İçerik (Adult)',
+        'keywords' => ['adult', 'porn', 'xxx', 'sex', 'porno', 'erotik', 'xvideos', 'xnxx', 'stripchat', 'onlyfans']
+    ],
+    'security' => [
+        'title' => 'USOM Siber Tehdit & Zararlı Yazılım',
+        'keywords' => ['usom', 'malware', 'phishing', 'threat', 'oisd', 'botnet', 'trojan', 'ransomware']
+    ]
+];
+
+$detected_category = '';
+$detected_cat_id = '';
+$dom_lower = strtolower($domain);
+
+foreach ($category_definitions as $cat_id => $data) {
+    foreach ($data['keywords'] as $kw) {
+        if (strpos($dom_lower, $kw) !== false) {
+            $detected_category = $data['title'];
+            $detected_cat_id = $cat_id;
+            break 2;
+        }
+    }
+}
+
+if (empty($detected_category)) {
+    if (stripos($reason, 'usom') !== false || stripos($reason, 'threat') !== false) {
+        $detected_category = 'USOM Siber Tehdit & Zararlı Yazılım';
+        $detected_cat_id = 'security';
+    } else {
+        $detected_category = 'Kurumsal UTM Güvenlik Politikası';
+    }
+}
+
+// If rule_name is empty, lookup matching active rule from rules.json based on detected category
+if (empty($rule_name) && !empty($detected_cat_id)) {
+    $rules_file = '/var/etc/poseafilter/rules.json';
+    if (!file_exists($rules_file)) {
+        $rules_file = '/conf/poseafilter/rules.json';
+    }
+    if (file_exists($rules_file)) {
+        $rules_data = @json_decode(file_get_contents($rules_file), true);
+        if (is_array($rules_data)) {
+            foreach ($rules_data as $r) {
+                if (!empty($r['enabled'])) {
+                    $cats = array_map('trim', explode(',', strtolower($r['categories'] ?? '')));
+                    if (in_array($detected_cat_id, $cats) || in_array('all', $cats)) {
+                        $rule_name = $r['name'] ?? '';
+                        break;
+                    }
+                }
+            }
+        }
+    }
+}
+
+// Composite display reason
+if (!empty($rule_name)) {
+    $display_reason = "{$detected_category} (Kural: {$rule_name})";
+} else {
+    $display_reason = $detected_category;
 }
 
 // Check for user-defined custom HTML block page
@@ -80,7 +199,9 @@ if (file_exists($custom_html_file)) {
             '{DISPLAY_NAME}' => htmlspecialchars($ad_user['display_name'] ?? ($ad_user['username'] ?? 'Anonymous')),
             '{DEPARTMENT}' => htmlspecialchars($ad_user['department'] ?? 'Genel'),
             '{GROUPS}' => htmlspecialchars(implode(', ', $ad_user['groups'] ?? [])),
-            '{REASON}' => htmlspecialchars($reason),
+            '{CATEGORY}' => htmlspecialchars($detected_category),
+            '{RULE}' => htmlspecialchars($rule_name ?: 'Global'),
+            '{REASON}' => htmlspecialchars($display_reason),
             '{TIME}' => date('Y-m-d H:i:s'),
             '{DATE}' => date('Y-m-d'),
             '{GATEWAY}' => trim($hostname)
@@ -406,7 +527,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['submit_exemption'])) 
             <div class="reason-box">
                 <div class="reason-icon"><i class="fa-solid fa-triangle-exclamation"></i></div>
                 <div class="reason-text">
-                    <strong>Politika İhlali:</strong> <?=htmlspecialchars($reason)?><br/>
+                    <strong>Politika İhlali:</strong> <?=htmlspecialchars($display_reason)?><br/>
                     <small style="opacity: 0.85;">Bu domain işletme iş akışı dışındaki kategorilerde veya USOM/Siber Tehdit İstihbaratı listelerinde yer almaktadır.</small>
                 </div>
             </div>

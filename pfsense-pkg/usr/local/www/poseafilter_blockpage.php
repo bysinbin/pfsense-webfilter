@@ -298,7 +298,9 @@ display_top_tabs($tab_array);
                     <span class="var-pill" data-var="{DISPLAY_NAME}" title="Kullanıcı Adı Soyadı">{DISPLAY_NAME}</span>
                     <span class="var-pill" data-var="{DEPARTMENT}" title="Departman">{DEPARTMENT}</span>
                     <span class="var-pill" data-var="{GROUPS}" title="AD Güvenlik Grupları">{GROUPS}</span>
-                    <span class="var-pill" data-var="{REASON}" title="Engelleme Nedeni/Kuralı">{REASON}</span>
+                    <span class="var-pill" data-var="{CATEGORY}" title="Tespit Edilen Kategori (Örn: Çevrimiçi Müzik & Radyo)">{CATEGORY}</span>
+                    <span class="var-pill" data-var="{RULE}" title="Tetiklenen Güvenlik Kuralı">{RULE}</span>
+                    <span class="var-pill" data-var="{REASON}" title="Detaylı Politika Nedeni">{REASON}</span>
                     <span class="var-pill" data-var="{TIME}" title="Tarih ve Saat">{TIME}</span>
                     <span class="var-pill" data-var="{GATEWAY}" title="Güvenlik Duvarı Adı">{GATEWAY}</span>
                 </div>
@@ -428,6 +430,7 @@ display_top_tabs($tab_array);
 
         <div class="details">
             <div class="row"><span class="label">Hedef Alan Adı:</span><span class="val domain-tag">{DOMAIN}</span></div>
+            <div class="row"><span class="label">Kategori:</span><span class="val" style="color:#f59e0b;">{CATEGORY}</span></div>
             <div class="row"><span class="label">İstemci IP Adresi:</span><span class="val">{CLIENT_IP}</span></div>
             <div class="row"><span class="label">Kullanıcı:</span><span class="val">{USER} ({DEPARTMENT})</span></div>
             <div class="row"><span class="label">Engelleme Nedeni:</span><span class="val">{REASON}</span></div>
@@ -468,7 +471,9 @@ events.push(function() {
             .replace(/\{DISPLAY_NAME\}/g, 'Ahmet Yılmaz')
             .replace(/\{DEPARTMENT\}/g, 'Finans & Muhasebe')
             .replace(/\{GROUPS\}/g, 'Domain Users, Muhasebe')
-            .replace(/\{REASON\}/g, 'Çevrimiçi Radyo & Müzik Politikası')
+            .replace(/\{CATEGORY\}/g, 'Çevrimiçi Müzik & Radyo (Streaming)')
+            .replace(/\{RULE\}/g, '1111')
+            .replace(/\{REASON\}/g, 'Çevrimiçi Müzik & Radyo (Streaming) (Kural: 1111)')
             .replace(/\{TIME\}/g, timeStr)
             .replace(/\{DATE\}/g, timeStr.split(' ')[0])
             .replace(/\{GATEWAY\}/g, 'fw.sener.local');
