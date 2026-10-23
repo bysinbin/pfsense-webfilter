@@ -1,7 +1,8 @@
 <?php
 /*
- * poseafilter_blockpage.php - PoseaFilter Custom Block Page HTML Editor
- * Allows administrators to design custom HTML block pages without IP redirection.
+ * poseafilter_blockpage.php - PoseaFilter Custom Block Page HTML & HTTPS Behavior Management
+ * Allows administrators to design custom HTML block pages, configure HTTPS drop vs block page,
+ * download the corporate Root CA certificate, and distribute it via Active Directory GPO.
  */
 
 require_once("guiconfig.inc");
@@ -13,11 +14,55 @@ $var_file = '/var/etc/poseafilter/block_custom.html';
 $action_msg = '';
 $action_type = 'info';
 
-// Handle Save Actions
+// 1. Handle CA Certificate Download
+if (isset($_GET['act']) && $_GET['act'] === 'download_ca') {
+    global $config;
+    $ca_crt = null;
+    if (isset($config["ca"]) && is_array($config["ca"])) {
+        foreach ($config["ca"] as $c) {
+            if ($c["descr"] === "SENER" || !empty($c["crt"])) {
+                $ca_crt = base64_decode($c["crt"]);
+                break;
+            }
+        }
+    }
+    if (!$ca_crt && file_exists('/var/etc/poseafilter/ca.crt')) {
+        $ca_crt = file_get_contents('/var/etc/poseafilter/ca.crt');
+    }
+    if ($ca_crt) {
+        while (ob_get_level()) { ob_end_clean(); }
+        header('Content-Type: application/x-x509-ca-cert');
+        header('Content-Disposition: attachment; filename="SENER_UTM_Root_CA.crt"');
+        header('Content-Length: ' . strlen($ca_crt));
+        header('Cache-Control: no-cache, no-store, must-revalidate');
+        header('Pragma: no-cache');
+        header('Expires: 0');
+        echo $ca_crt;
+        exit;
+    } else {
+        $action_msg = "Kök sertifika (CA) bulunamadı. Lütfen System -> Cert Manager altında bir CA tanımlayın.";
+        $action_type = "danger";
+    }
+}
+
+// 2. Handle POST Actions
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $act = $_POST['act'] ?? '';
 
-    if ($act === 'save') {
+    if ($act === 'save_mode') {
+        $mode = $_POST['https_mode'] ?? 'block_page';
+        $settings = poseafilter_get_block_settings();
+        $settings['https_mode'] = $mode;
+        poseafilter_save_block_settings($settings);
+        poseafilter_configure_nginx_port80();
+
+        if ($mode === 'drop') {
+            $action_msg = "HTTPS Engelleme Modu: 'Sessiz Engelleme (TCP Reset/Drop)' olarak güncellendi. Engellenen HTTPS sitelerde sertifika uyarısı çıkmayacak, bağlantı anında sıfırlanacaktır.";
+        } else {
+            $action_msg = "HTTPS Engelleme Modu: 'Blok Sayfası Göster (Root CA)' olarak güncellendi. Kurumsal blok sayfası HTTPS portunda aktif edildi.";
+        }
+        $action_type = "success";
+    } elseif ($act === 'save') {
         $custom_html = $_POST['custom_html'] ?? '';
         file_put_contents($custom_file, $custom_html);
         @file_put_contents($var_file, $custom_html);
@@ -34,10 +79,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
+$block_settings = poseafilter_get_block_settings();
+$current_https_mode = $block_settings['https_mode'] ?? 'block_page';
+
 $current_html = file_exists($custom_file) ? file_get_contents($custom_file) : '';
 $is_custom_active = (trim($current_html) !== '');
 
-$pgtitle = array(gettext("Services"), gettext("PoseaFilter"), gettext("Engelleme Sayfası HTML"));
+$pgtitle = array(gettext("Services"), gettext("PoseaFilter"), gettext("Engelleme Sayfası & HTTPS Yönetimi"));
 include("head.inc");
 
 $tab_array = array();
@@ -45,7 +93,7 @@ $tab_array[] = array(gettext("General Settings"), false, "/pkg_edit.php?xml=pose
 $tab_array[] = array(gettext("Feeds & Categories"), false, "/poseafilter_feeds.php");
 $tab_array[] = array(gettext("UTM Rules"), false, "/poseafilter_rules.php");
 $tab_array[] = array(gettext("Live Monitor & Logs"), false, "/poseafilter_monitor.php");
-$tab_array[] = array(gettext("Engelleme Sayfası (HTML)"), true, "/poseafilter_blockpage.php");
+$tab_array[] = array(gettext("Engelleme Sayfası (HTML & HTTPS)"), true, "/poseafilter_blockpage.php");
 $tab_array[] = array(gettext("Suite Yedek & Bildirim"), false, "/posea_suite_backup.php");
 display_top_tabs($tab_array);
 ?>
@@ -61,9 +109,13 @@ display_top_tabs($tab_array);
 }
 .editor-panel h3 {
     margin-top: 0;
-    color: #38bdf8;
-    font-size: 18px;
+    margin-bottom: 8px;
+    font-size: 17px;
     font-weight: 700;
+    color: #f8fafc;
+    display: flex;
+    align-items: center;
+    gap: 8px;
 }
 .code-editor {
     width: 100%;
@@ -75,12 +127,14 @@ display_top_tabs($tab_array);
     line-height: 1.5;
     padding: 16px;
     border: 1px solid #334155;
-    border-radius: 8px;
+    border-radius: 6px;
     resize: vertical;
+    box-sizing: border-box;
 }
 .code-editor:focus {
     outline: none;
     border-color: #38bdf8;
+    box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.2);
 }
 .var-pill {
     display: inline-block;
@@ -90,13 +144,15 @@ display_top_tabs($tab_array);
     padding: 3px 8px;
     border-radius: 4px;
     font-family: monospace;
-    font-size: 12px;
+    font-size: 11px;
     margin: 2px 4px 2px 0;
     cursor: pointer;
+    transition: all 0.15s ease;
 }
 .var-pill:hover {
-    background: #1e293b;
-    border-color: #38bdf8;
+    background: #1e3a8a;
+    border-color: #60a5fa;
+    color: #ffffff;
 }
 .preview-box {
     width: 100%;
@@ -104,25 +160,116 @@ display_top_tabs($tab_array);
     background: #ffffff;
     border: 1px solid #334155;
     border-radius: 8px;
+    overflow: auto;
+}
+.mode-card {
+    display: block;
+    cursor: pointer;
+    background: #0f172a;
+    border-radius: 8px;
+    padding: 16px;
+    transition: all 0.2s ease;
+}
+.mode-card.active {
+    border: 2px solid #38bdf8 !important;
+    background: #0b1329;
+}
+.mode-card:hover {
+    border-color: #64748b;
 }
 </style>
 
 <div class="panel panel-default">
-    <div class="panel-heading">
-        <h2 class="panel-title"><i class="fa-solid fa-code" style="margin-right: 8px;"></i>PoseaFilter Özel Engelleme Sayfası HTML Editörü</h2>
-    </div>
-    <div class="panel-body">
+    <div class="panel-body" style="background: #0b1120; border: none; padding: 20px;">
+
         <?php if (!empty($action_msg)): ?>
-            <div class="alert alert-<?=$action_type?> alert-dismissible" role="alert">
-                <button type="button" class="close" data-dismiss="alert"><span>&times;</span></button>
-                <i class="fa-solid fa-circle-check" style="margin-right: 6px;"></i><?=$action_msg?>
+            <div class="alert alert-<?=$action_type?>" style="border-radius: 6px; margin-bottom: 20px; font-weight: 500;">
+                <i class="fa-solid fa-circle-info" style="margin-right: 8px;"></i> <?=$action_msg?>
             </div>
         <?php endif; ?>
 
+        <!-- 1. HTTPS Engelleme Davranışı & Kök Sertifika Yönetim Paneli -->
+        <div class="editor-panel">
+            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 16px;">
+                <div>
+                    <h3><i class="fa-solid fa-shield-halved" style="color: #38bdf8;"></i> HTTPS Engelleme Yöntemi &amp; Kurumsal Sertifika (CA)</h3>
+                    <p style="color: #94a3b8; font-size: 13px; margin: 4px 0 0 0;">
+                        HTTPS siteler şifreli çalıştığı için engelleme anında tarayıcıların sertifika kontrolünü nasıl karşılayacağınızı buradan yönetin.
+                    </p>
+                </div>
+                <div>
+                    <a href="poseafilter_blockpage.php?act=download_ca" class="btn btn-primary" style="font-weight: 700; padding: 9px 18px; background-color: #0284c7; border-color: #0284c7;">
+                        <i class="fa-solid fa-download" style="margin-right: 6px;"></i> Kurumsal Kök Sertifikasını İndir (.crt)
+                    </a>
+                </div>
+            </div>
+
+            <form method="post" action="poseafilter_blockpage.php" id="modeForm">
+                <input type="hidden" name="act" value="save_mode" />
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 15px; margin-bottom: 18px;">
+                    
+                    <!-- Mod 1: Blok Sayfası Göster (Root CA ile) -->
+                    <label class="mode-card <?=($current_https_mode === 'block_page' ? 'active' : '')?>" style="border: 2px solid <?=($current_https_mode === 'block_page' ? '#38bdf8' : '#334155')?>;">
+                        <div style="display: flex; align-items: flex-start; gap: 12px;">
+                            <input type="radio" name="https_mode" value="block_page" <?=($current_https_mode === 'block_page' ? 'checked' : '')?> style="margin-top: 4px;" />
+                            <div>
+                                <strong style="color: #f8fafc; font-size: 14px;"><i class="fa-solid fa-display" style="color:#10b981; margin-right: 6px;"></i>1. Blok Sayfası Göster (Önerilen - AD GPO İle)</strong>
+                                <p style="color: #94a3b8; font-size: 12px; margin: 6px 0 0 0; line-height: 1.4;">
+                                    Engellenen HTTPS sitelerde kullanıcıya özel kurumsal blok sayfanız açılır. Kullanıcıların kırmızı "Gizlilik Hatası" görmemesi için yukarıdaki mavi butonla indirilen <code>.crt</code> sertifikası Active Directory (GPO) üzerinden tüm bilgisayarlara 1 kez dağıtılır.
+                                </p>
+                            </div>
+                        </div>
+                    </label>
+
+                    <!-- Mod 2: Sessiz Engelleme (TCP Reset / Drop) -->
+                    <label class="mode-card <?=($current_https_mode === 'drop' ? 'active' : '')?>" style="border: 2px solid <?=($current_https_mode === 'drop' ? '#38bdf8' : '#334155')?>;">
+                        <div style="display: flex; align-items: flex-start; gap: 12px;">
+                            <input type="radio" name="https_mode" value="drop" <?=($current_https_mode === 'drop' ? 'checked' : '')?> style="margin-top: 4px;" />
+                            <div>
+                                <strong style="color: #f8fafc; font-size: 14px;"><i class="fa-solid fa-ban" style="color:#f43f5e; margin-right: 6px;"></i>2. Sessiz Engelleme (TCP Reset / Drop)</strong>
+                                <p style="color: #94a3b8; font-size: 12px; margin: 6px 0 0 0; line-height: 1.4;">
+                                    Bilgisayarlara sertifika yüklemek istemiyorsanız bu modu seçin. Engellenen HTTPS sitelerde kırmızı "Bağlantınız gizli değil" sertifika ekranı <strong>asla çıkmaz</strong>; bağlantı sessizce kesilir ("Bu siteye ulaşılamıyor / Bağlantı sıfırlandı"). HTTP sitelerde ise blok sayfanız açılmaya devam eder.
+                                </p>
+                            </div>
+                        </div>
+                    </label>
+
+                </div>
+
+                <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+                    <button type="submit" class="btn btn-success" style="font-weight: 700; padding: 8px 22px;">
+                        <i class="fa-solid fa-check" style="margin-right: 6px;"></i> Engelleme Modunu Kaydet &amp; Uygula
+                    </button>
+                    <button type="button" class="btn btn-default" id="btnToggleGpoGuide" style="background-color: #334155; border-color: #475569; color: #f8fafc; font-weight: 600;">
+                        <i class="fa-brands fa-windows" style="margin-right: 6px; color: #38bdf8;"></i> Active Directory (GPO) Dağıtım Kılavuzunu Göster
+                    </button>
+                </div>
+            </form>
+
+            <!-- Collapsible GPO Dağıtım Kılavuzu -->
+            <div id="gpoGuidePanel" style="display: none; margin-top: 20px; background: #090d16; border: 1px solid #334155; border-radius: 8px; padding: 18px; font-size: 13px;">
+                <h4 style="color: #38bdf8; margin: 0 0 12px 0; font-size: 14px; font-weight: 700;">
+                    <i class="fa-brands fa-windows" style="margin-right: 6px;"></i> Windows Server (SENERDC) GPO ile 4 Adımda Kök Sertifika Dağıtımı:
+                </h4>
+                <ol style="color: #cbd5e1; margin: 0; padding-left: 20px; line-height: 1.8;">
+                    <li>Yukarıdaki <strong>[Kurumsal Kök Sertifikasını İndir (.crt)]</strong> butonuna basarak <code>SENER_UTM_Root_CA.crt</code> dosyasını indirin ve Domain Controller sunucunuza (<code>SENERDC</code>) kopyalayın.</li>
+                    <li>Windows Server üzerinde <strong>Server Manager &rarr; Tools &rarr; Group Policy Management</strong> konsolunu açın.</li>
+                    <li>Etki alanınızdaki (<code>sener.local</code>) <strong>Default Domain Policy</strong> (veya oluşturacağınız yeni bir GPO) üzerine sağ tıklayıp <strong>Edit (Düzenle)</strong> seçin.</li>
+                    <li>Açılan pencerede şu yola gidin:  
+                        <code style="color: #facc15; background: #1e293b; padding: 2px 6px; border-radius: 4px;">Computer Configuration &rarr; Policies &rarr; Windows Settings &rarr; Security Settings &rarr; Public Key Policies &rarr; Trusted Root Certification Authorities (Güvenilen Kök Sertifika Yetkilileri)</code></li>
+                    <li>Sağdaki boş alana sağ tıklayın &rarr; <strong>Import (İçe Aktar)</strong> seçin &rarr; İndirdiğiniz <code>.crt</code> dosyasını seçip sihirbazı tamamlayın.</li>
+                </ol>
+                <div style="margin-top: 12px; padding: 10px 14px; background: #1e293b; border-left: 4px solid #10b981; border-radius: 4px; color: #a7f3d0; font-size: 12px;">
+                    <i class="fa-solid fa-circle-check" style="margin-right: 6px;"></i> <strong>Sonuç:</strong> Etki alanındaki tüm bilgisayarlar arka planda 5 dakika içinde bu sertifikayı otomatik tanır. Kullanıcılar yasaklı bir HTTPS sitesine girdiğinde hiçbir kırmızı uyarı görmeden doğrudan logonuz ve kurumsal blok sayfanız açılır!
+                </div>
+            </div>
+        </div>
+
+        <!-- 2. HTML Editör & Şablon Tasarım Paneli -->
         <div class="editor-panel">
             <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; margin-bottom: 15px;">
                 <div>
-                    <h3><i class="fa-solid fa-file-code"></i> HTML Tasarımı &amp; Canlı Şablon</h3>
+                    <h3><i class="fa-solid fa-file-code" style="color: #f59e0b;"></i> Özel Engelleme Sayfası HTML Tasarımı</h3>
                     <p style="color: #94a3b8; font-size: 13px; margin-bottom: 0;">
                         Engellenen web sitelerine girildiğinde harici bir IP'ye yönlendirme yapmadan kullanıcının tarayıcısında doğrudan bu HTML gösterilir.
                     </p>
@@ -184,9 +331,9 @@ display_top_tabs($tab_array);
             </form>
         </div>
 
-        <!-- Live Preview Panel -->
+        <!-- 3. Canlı Önizleme (Live Preview) Paneli -->
         <div class="editor-panel">
-            <h3><i class="fa-solid fa-desktop"></i> Canlı Önizleme (Live Preview)</h3>
+            <h3><i class="fa-solid fa-desktop" style="color: #38bdf8;"></i> Canlı Önizleme (Live Preview)</h3>
             <p style="color: #94a3b8; font-size: 13px; margin-bottom: 14px;">
                 Aşağıdaki çerçeve, yukarıda yazdığınız HTML kodunun örnek değişkenler ({DOMAIN}=<code>canliradyodinle.fm</code>, {CLIENT_IP}=<code>192.168.2.105</code>, {USER}=<code>ahmet.yilmaz</code>) ile kullanıcı ekranında nasıl görüneceğini anlık gösterir.
             </p>
@@ -334,6 +481,17 @@ events.push(function() {
             doc.close();
         }
     }
+
+    // GPO Guide Toggle
+    $('#btnToggleGpoGuide').on('click', function() {
+        $('#gpoGuidePanel').slideToggle(200);
+    });
+
+    // Mode card border highlighting
+    $('input[name="https_mode"]').on('change', function() {
+        $('.mode-card').removeClass('active');
+        $(this).closest('.mode-card').addClass('active');
+    });
 
     // Variable pill clicks
     $('.var-pill').on('click', function() {

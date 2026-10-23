@@ -210,18 +210,32 @@ function poseafilter_get_stats() {
     ];
 }
 
+function poseafilter_get_block_settings() {
+    $file = '/conf/poseafilter_block_settings.json';
+    if (file_exists($file)) {
+        $data = json_decode(@file_get_contents($file), true);
+        if (is_array($data)) return $data;
+    }
+    return [
+        'https_mode' => 'block_page' // 'block_page' or 'drop'
+    ];
+}
+
+function poseafilter_save_block_settings($settings) {
+    $file = '/conf/poseafilter_block_settings.json';
+    @file_put_contents($file, json_encode($settings, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+    @file_put_contents('/var/etc/poseafilter/block_settings.json', json_encode($settings, JSON_PRETTY_PRINT));
+    @copy($file, '/conf/posea_system/pkg/poseafilter_block_settings.json');
+}
+
 function poseafilter_configure_nginx_port80() {
     $conf_path = '/var/etc/nginx-webConfigurator.conf';
     if (!file_exists($conf_path)) return;
 
-    $conf = file_get_contents($conf_path);
+    $settings = poseafilter_get_block_settings();
+    $https_mode = $settings['https_mode'] ?? 'block_page';
 
-    // If both 80 and 443 are already configured with block handler, nothing to do
-    if (strpos($conf, 'poseafilter_block.php') !== false && 
-        strpos($conf, 'listen 443 ssl;') !== false && 
-        strpos($conf, 'return 301 https://$http_host:448$request_uri;') !== false) {
-        return;
-    }
+    $conf = file_get_contents($conf_path);
 
     $marker = 'listen 80;';
     $pos = strpos($conf, $marker);
@@ -231,48 +245,54 @@ function poseafilter_configure_nginx_port80() {
     if ($server_pos === false) return;
 
     $base_conf = rtrim(substr($conf, 0, $server_pos));
-
     $mgmt_regex = '^(192\\.168\\.|10\\.|172\\.16\\.|127\\.0\\.0\\.1|185\\.189\\.54\\.89|fw\\.)';
 
+    // 1. Port 80 Block Server (Always Active)
     $new_blocks = "
-	server {
-		listen 80;
-		listen [::]:80;
-		root \"/usr/local/www/\";
+\tserver {
+\t\tlisten 80;
+\t\tlisten [::]:80;
+\t\troot \"/usr/local/www/\";
 
-		location / {
-		if (\$http_host ~* \"{$mgmt_regex}\") {
-				return 301 https://\$http_host:448\$request_uri;
-			}
-			fastcgi_pass   unix:/var/run/php-fpm.socket;
-			fastcgi_param  SCRIPT_FILENAME  /usr/local/www/poseafilter_block.php;
-			include        /usr/local/etc/nginx/fastcgi_params;
-		}
-	}
+\t\tlocation / {
+\t\t\tif (\$http_host ~* \"{$mgmt_regex}\") {
+\t\t\t\treturn 301 https://\$http_host:448\$request_uri;
+\t\t\t}
+\t\t\tfastcgi_pass   unix:/var/run/php-fpm.socket;
+\t\t\tfastcgi_param  SCRIPT_FILENAME  /usr/local/www/poseafilter_block.php;
+\t\t\tinclude        /usr/local/etc/nginx/fastcgi_params;
+\t\t}
+\t}";
 
-	server {
-		listen 443 ssl;
-		listen [::]:443 ssl;
+    // 2. Port 443 SSL Block Server (Active only if https_mode == 'block_page')
+    if ($https_mode === 'block_page') {
+        $cert_file = file_exists('/var/etc/poseafilter/posea_block.crt') ? '/var/etc/poseafilter/posea_block.crt' : '/var/etc/cert.crt';
+        $key_file = file_exists('/var/etc/poseafilter/posea_block.key') ? '/var/etc/poseafilter/posea_block.key' : '/var/etc/cert.key';
 
-		ssl_certificate         /var/etc/cert.crt;
-		ssl_certificate_key     /var/etc/cert.key;
-		ssl_protocols           TLSv1.2 TLSv1.3;
+        $new_blocks .= "
 
-		root \"/usr/local/www/\";
+\tserver {
+\t\tlisten 443 ssl;
+\t\tlisten [::]:443 ssl;
 
-		location / {
-		if (\$http_host ~* \"{$mgmt_regex}\") {
-				return 301 https://\$http_host:448\$request_uri;
-			}
-			fastcgi_pass   unix:/var/run/php-fpm.socket;
-			fastcgi_param  SCRIPT_FILENAME  /usr/local/www/poseafilter_block.php;
-			include        /usr/local/etc/nginx/fastcgi_params;
-		}
-	}
-}
-";
+\t\tssl_certificate         {$cert_file};
+\t\tssl_certificate_key     {$key_file};
+\t\tssl_protocols           TLSv1.2 TLSv1.3;
 
-    $final_conf = $base_conf . "\n" . trim($new_blocks) . "\n";
+\t\troot \"/usr/local/www/\";
+
+\t\tlocation / {
+\t\t\tif (\$http_host ~* \"{$mgmt_regex}\") {
+\t\t\t\treturn 301 https://\$http_host:448\$request_uri;
+\t\t\t}
+\t\t\tfastcgi_pass   unix:/var/run/php-fpm.socket;
+\t\t\tfastcgi_param  SCRIPT_FILENAME  /usr/local/www/poseafilter_block.php;
+\t\t\tinclude        /usr/local/etc/nginx/fastcgi_params;
+\t\t}
+\t}";
+    }
+
+    $final_conf = $base_conf . "\n" . trim($new_blocks) . "\n}\n";
     file_put_contents($conf_path, $final_conf);
     @shell_exec('/usr/local/sbin/nginx -t -c ' . escapeshellarg($conf_path) . ' && killall -HUP nginx 2>/dev/null');
 }
