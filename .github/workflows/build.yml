@@ -24,7 +24,7 @@ jobs:
         run: |
           mkdir -p /tmp/freebsd-sysroot
           echo "[*] Downloading FreeBSD 14 base..."
-          wget -q https://archive.freebsd.org/old-releases/amd64/14.0-RELEASE/base.txz -O /tmp/base.txz
+          wget -q https://download.freebsd.org/releases/amd64/14.4-RELEASE/base.txz -O /tmp/base.txz
           
           echo "[*] Extracting sysroot headers and libraries..."
           tar -xf /tmp/base.txz -C /tmp/freebsd-sysroot ./usr/include ./usr/lib ./lib
