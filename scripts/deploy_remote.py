@@ -10,6 +10,10 @@ import os
 import time
 import paramiko
 
+# Set UTF-8 encoding for Windows stdout
+if hasattr(sys.stdout, 'reconfigure'):
+    sys.stdout.reconfigure(encoding='utf-8')
+
 # Server Credentials
 HOST = "185.189.54.89"
 PORT = 422
@@ -64,15 +68,21 @@ def main():
     ssh.connect(HOST, port=PORT, username=USER, password=PASS, timeout=15)
     print("[+] SSH connection established.")
 
-    sftp = ssh.open_sftp()
+    # 1. Stop service cleanly before updating
+    print("[*] Stopping poseafilter service...")
+    stdin, stdout, stderr = ssh.exec_command("/usr/local/etc/rc.d/poseafilter.sh stop; killall -9 poseafilterd 2>/dev/null")
+    stdout.read()
+    time.sleep(1)
 
-    # 1. Create directories
+    # 2. Create directories
     print("[*] Ensuring remote directories exist...")
     for d in DIRS_TO_CREATE:
         stdin, stdout, stderr = ssh.exec_command(f"mkdir -p {d}")
         stdout.read()
 
-    # 2. Upload daemon binary if present
+    sftp = ssh.open_sftp()
+
+    # 3. Upload daemon binary if present
     if os.path.exists(DAEMON_BIN):
         print(f"[*] Uploading binary {DAEMON_BIN} -> /usr/local/sbin/poseafilterd...")
         sftp.put(DAEMON_BIN, "/usr/local/sbin/poseafilterd")
@@ -81,7 +91,7 @@ def main():
     else:
         print("[!] Note: daemon binary not found locally, skipping binary upload.")
 
-    # 3. Upload package files
+    # 4. Upload package files
     print("[*] Uploading package PHP/XML/CLI/Conf files...")
     for local_p, remote_p, mode in FILES_TO_DEPLOY:
         if not os.path.exists(local_p):
@@ -94,7 +104,7 @@ def main():
     sftp.close()
     print("[+] All files uploaded.")
 
-    # 4. Verify syntax of uploaded PHP files
+    # 5. Verify syntax of uploaded PHP files
     print("\n[*] Verifying PHP syntax on remote pfSense...")
     cmd_lint = """
     for f in /usr/local/pkg/poseafilter.inc \
@@ -117,20 +127,20 @@ def main():
         ssh.close()
         sys.exit(1)
 
-    # 5. Sync pfSense rules and restart PoseaFilter
-    print("\n[*] Synchronizing pfSense filter rules & restarting poseafilter...")
+    # 6. Sync pfSense rules and restart PoseaFilter
+    print("\n[*] Synchronizing pfSense filter rules & starting poseafilter...")
     cmd_restart = """
     # Sync rules and generate PF tables
     php -r '
     require_once("/etc/inc/config.inc");
     require_once("/etc/inc/filter.inc");
     require_once("/usr/local/pkg/poseafilter.inc");
-    poseafilter_sync_rules();
+    poseafilter_resync();
     filter_configure();
     '
     
-    # Restart daemon
-    /usr/local/etc/rc.d/poseafilter.sh restart
+    # Start daemon
+    /usr/local/etc/rc.d/poseafilter.sh start
     sleep 2
     """
     stdin, stdout, stderr = ssh.exec_command(cmd_restart)
@@ -139,12 +149,12 @@ def main():
     if err:
         print("STDERR:\n", err)
 
-    # 6. Verify Service Status & CLI Tests
+    # 7. Verify Service Status & CLI Tests
     print("\n[*] Verifying Service Status via poseactl...")
     stdin, stdout, stderr = ssh.exec_command("/usr/local/bin/poseactl status; /usr/local/bin/poseactl stats")
     print(stdout.read().decode())
 
-    # 7. Test DNS Resolution locally on the firewall
+    # 8. Test DNS Resolution locally on the firewall
     print("[*] Testing local DNS query on 127.0.0.1:5353...")
     stdin, stdout, stderr = ssh.exec_command("sockstat -4 -l | grep 5353; drill @127.0.0.1 -p 5353 google.com 2>/dev/null || dig @127.0.0.1 -p 5353 google.com")
     print(stdout.read().decode())

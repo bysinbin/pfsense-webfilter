@@ -13,7 +13,7 @@ rcvar="poseafilter_enable"
 extra_commands="reload status restart"
 
 command="/usr/local/sbin/poseafilterd"
-command_args="-c /var/etc/poseafilter"
+command_args="-f -c /var/etc/poseafilter"
 pidfile="/var/run/${name}.pid"
 sup_pidfile="/var/run/${name}_sup.pid"
 
@@ -29,14 +29,15 @@ poseafilter_start() {
     if [ ! -d "/var/log/poseafilter" ]; then
         mkdir -p /var/log/poseafilter
     fi
-    if pgrep -q poseafilterd; then
+    if pgrep -x poseafilterd >/dev/null 2>&1; then
         echo "poseafilter is already running."
         return 0
     fi
-    # Use FreeBSD supervisor daemon with auto-restart on crash (-r -R 1)
-    /usr/sbin/daemon -r -R 1 -P ${sup_pidfile} -p ${pidfile} -f ${command} ${command_args}
+    # Use FreeBSD supervisor daemon with auto-restart on crash (-r -R 2)
+    # Note: -f tells daemon(8) to supervise the foreground child (-f in command_args)
+    /usr/sbin/daemon -r -R 2 -P ${sup_pidfile} -p ${pidfile} ${command} ${command_args}
     sleep 1
-    if pgrep -q poseafilterd; then
+    if pgrep -x poseafilterd >/dev/null 2>&1; then
         echo "poseafilter started successfully."
         return 0
     fi
@@ -54,7 +55,7 @@ poseafilter_stop() {
         kill -TERM $(cat ${pidfile}) 2>/dev/null
         rm -f ${pidfile}
     fi
-    killall -TERM poseafilterd 2>/dev/null
+    killall -9 poseafilterd 2>/dev/null || true
 }
 
 poseafilter_reload() {

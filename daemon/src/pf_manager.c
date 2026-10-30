@@ -68,17 +68,7 @@ void pf_queue_ip(const char *ip) {
 }
 
 void pf_sync_domain_ips(const char *domain) {
-    if (!g_filter.config.pf_table_sync || !domain || !*domain) return;
-
-    pthread_mutex_lock(&s_pf_queue_lock);
-    if (s_domain_q_count < PF_MAX_QUEUED_DOMAINS) {
-        strncpy(s_domain_queue[s_domain_q_tail], domain, sizeof(s_domain_queue[0]) - 1);
-        s_domain_queue[s_domain_q_tail][sizeof(s_domain_queue[0]) - 1] = '\0';
-        s_domain_q_tail = (s_domain_q_tail + 1) % PF_MAX_QUEUED_DOMAINS;
-        s_domain_q_count++;
-        pthread_cond_signal(&s_pf_queue_cond);
-    }
-    pthread_mutex_unlock(&s_pf_queue_lock);
+    (void)domain;
 }
 
 static void *pf_batch_worker(void *arg) {
@@ -94,14 +84,6 @@ static void *pf_batch_worker(void *arg) {
         pthread_mutex_lock(&s_pf_queue_lock);
         pthread_cond_timedwait(&s_pf_queue_cond, &s_pf_queue_lock, &ts);
 
-        char local_domains[64][128];
-        int local_domain_count = 0;
-        while (s_domain_q_count > 0 && local_domain_count < 64) {
-            strncpy(local_domains[local_domain_count++], s_domain_queue[s_domain_q_head], 127);
-            s_domain_q_head = (s_domain_q_head + 1) % PF_MAX_QUEUED_DOMAINS;
-            s_domain_q_count--;
-        }
-
         char local_ips[128][48];
         int local_ip_count = 0;
         while (s_ip_q_count > 0 && local_ip_count < 128) {
@@ -110,36 +92,6 @@ static void *pf_batch_worker(void *arg) {
             s_ip_q_count--;
         }
         pthread_mutex_unlock(&s_pf_queue_lock);
-
-        /* Resolve domains to IPs */
-        for (int i = 0; i < local_domain_count && local_ip_count < 128; i++) {
-            struct addrinfo hints, *res, *p;
-            memset(&hints, 0, sizeof(hints));
-            hints.ai_family = AF_INET;
-            hints.ai_socktype = SOCK_STREAM;
-
-            if (getaddrinfo(local_domains[i], NULL, &hints, &res) == 0) {
-                for (p = res; p != NULL && local_ip_count < 128; p = p->ai_next) {
-                    struct sockaddr_in *ipv4 = (struct sockaddr_in *)p->ai_addr;
-                    char ip_str[INET_ADDRSTRLEN];
-                    inet_ntop(AF_INET, &(ipv4->sin_addr), ip_str, sizeof(ip_str));
-                    if (strcmp(ip_str, "0.0.0.0") != 0 && strcmp(ip_str, "127.0.0.1") != 0) {
-                        /* Check duplicate in local_ips */
-                        bool dup = false;
-                        for (int j = 0; j < local_ip_count; j++) {
-                            if (strcmp(local_ips[j], ip_str) == 0) {
-                                dup = true;
-                                break;
-                            }
-                        }
-                        if (!dup) {
-                            strncpy(local_ips[local_ip_count++], ip_str, 47);
-                        }
-                    }
-                }
-                freeaddrinfo(res);
-            }
-        }
 
         /* If we have IPs, batch add them to pfctl */
         if (local_ip_count > 0 && g_filter.config.pf_table_sync) {

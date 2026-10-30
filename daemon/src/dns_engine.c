@@ -396,6 +396,11 @@ static void *tcp_server_loop(void *arg) {
         int client_fd = accept(s_tcp_sock, (struct sockaddr *)&client_addr, &client_len);
         if (client_fd < 0) continue;
 
+        /* Set 2-second timeout to prevent stalling on slow/hanging clients */
+        struct timeval tv = { .tv_sec = 2, .tv_usec = 0 };
+        setsockopt(client_fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+        setsockopt(client_fd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
+
         char client_ip[INET_ADDRSTRLEN] = {0};
         inet_ntop(AF_INET, &client_addr.sin_addr, client_ip, sizeof(client_ip));
 
