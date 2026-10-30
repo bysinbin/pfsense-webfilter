@@ -15,7 +15,7 @@
 #include <unistd.h>
 #include "cJSON.h"
 
-#define POSEAFILTER_VERSION     "1.0.0"
+#define POSEAFILTER_VERSION     "1.1.0"
 #define DEFAULT_CONFIG_DIR      "/var/etc/poseafilter"
 #define DEFAULT_LOG_DIR         "/var/log/poseafilter"
 #define DEFAULT_FEED_FILE       "/var/etc/poseafilter/feeds.txt"
@@ -102,6 +102,14 @@ typedef struct {
     bool enable_youtube_restricted;   /* Force YouTube Restricted Mode */
     bool enable_block_page;           /* Redirect blocked HTTP to Block Page */
     char block_page_ip[64];           /* IP where block page is hosted e.g. 192.168.2.1 */
+
+    /* Concurrency, Cache & Advanced Filtering */
+    int worker_threads;       /* Default: 4 */
+    bool enable_dns_tcp;      /* Listen on TCP 5353 as well */
+    bool enable_dns_cache;    /* In-memory LRU TTL DNS cache */
+    int dns_cache_size;       /* Max cached entries, default 10000 */
+    bool enable_sni_filter;   /* Transparent TLS Port 443 SNI drop */
+    int sni_filter_port;      /* Default: 8444 */
 } global_config_t;
 
 #define MAX_AD_USERS 1024
@@ -134,6 +142,8 @@ typedef struct {
     uint64_t total_queries;
     uint64_t total_blocked;
     uint64_t total_passed;
+    uint64_t cache_hits;
+    uint64_t cache_misses;
     pthread_mutex_t lock;
 } filter_state_t;
 
@@ -163,18 +173,24 @@ bool match_schedule(const filter_rule_t *rule);
 int feed_init(const char *feed_file);
 void feed_cleanup(void);
 int feed_reload(const char *feed_file);
+int feed_reload_categories(const char *cat_dir);
 bool feed_is_domain_blocked(const char *domain);
+bool feed_is_domain_in_category(const char *domain, const char *category);
 
-/* SNI Parser */
+/* SNI Parser & Transparent SNI Engine */
 int parse_tls_sni(const uint8_t *data, size_t len, char *sni_out, size_t max_len);
+int sni_engine_start(void);
+void sni_engine_stop(void);
 
 /* FreeBSD PF Integration */
 int pf_init(void);
+void pf_cleanup(void);
 int pf_add_ip_to_table(const char *table, const char *ip);
 int pf_del_ip_from_table(const char *table, const char *ip);
 int pf_flush_table(const char *table);
 int pf_kill_states_for_ip(const char *ip);
 void pf_sync_domain_ips(const char *domain);
+void pf_queue_ip(const char *ip);
 
 /* FreeBSD ARP / Client Resolution */
 bool bsd_arp_lookup_mac(const char *ip, char *mac_out, size_t max_len);

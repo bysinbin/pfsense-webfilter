@@ -240,59 +240,64 @@ static bool check_seed_list(const char *domain, const char **seeds) {
 bool filter_is_in_category(const char *domain, const char *category) {
     if (!domain || !*domain || !category || !*category) return false;
 
+    bool in_seeds = false;
+
     if (strcasecmp(category, "streaming") == 0 || strcasecmp(category, "video") == 0 ||
         strcasecmp(category, "radio") == 0 || strcasecmp(category, "audio") == 0)
-        return check_seed_list(domain, s_streaming_seeds);
-    if (strcasecmp(category, "social") == 0 || strcasecmp(category, "social_media") == 0)
-        return check_seed_list(domain, s_social_seeds);
-    if (strcasecmp(category, "gambling") == 0 || strcasecmp(category, "betting") == 0)
-        return check_seed_list(domain, s_gambling_seeds);
-    if (strcasecmp(category, "gaming") == 0 || strcasecmp(category, "games") == 0)
-        return check_seed_list(domain, s_gaming_seeds);
-    if (strcasecmp(category, "adult") == 0 || strcasecmp(category, "porn") == 0)
-        return check_seed_list(domain, s_adult_seeds);
-    if (strcasecmp(category, "crypto") == 0)
-        return check_seed_list(domain, s_crypto_seeds);
-    if (strcasecmp(category, "warez") == 0 || strcasecmp(category, "p2p") == 0 || strcasecmp(category, "torrent") == 0)
-        return check_seed_list(domain, s_warez_seeds);
-    if (strcasecmp(category, "bypass") == 0 || strcasecmp(category, "vpn") == 0 || strcasecmp(category, "proxy") == 0)
-        return check_seed_list(domain, s_bypass_seeds);
-    if (strcasecmp(category, "tailscale") == 0)
-        return check_seed_list(domain, s_tailscale_seeds);
-    if (strcasecmp(category, "wireguard") == 0)
-        return check_seed_list(domain, s_wireguard_seeds);
-    if (strcasecmp(category, "openvpn") == 0)
-        return check_seed_list(domain, s_openvpn_seeds);
-    if (strcasecmp(category, "tor") == 0)
-        return check_seed_list(domain, s_tor_seeds);
-    if (strcasecmp(category, "dating") == 0)
-        return check_seed_list(domain, s_dating_seeds);
-    if (strcasecmp(category, "ads") == 0 || strcasecmp(category, "advertising") == 0)
-        return check_seed_list(domain, s_ads_seeds);
-    if (strcasecmp(category, "shorteners") == 0 || strcasecmp(category, "shortener") == 0)
-        return check_seed_list(domain, s_shorteners_seeds);
-    if (strcasecmp(category, "webmail") == 0 || strcasecmp(category, "mail") == 0)
-        return check_seed_list(domain, s_webmail_seeds);
-    if (strcasecmp(category, "astrology") == 0 || strcasecmp(category, "fal") == 0)
-        return check_seed_list(domain, s_astrology_seeds);
-    if (strcasecmp(category, "cheating") == 0 || strcasecmp(category, "homework") == 0)
-        return check_seed_list(domain, s_cheating_seeds);
-    if (strcasecmp(category, "security") == 0 || strcasecmp(category, "malware") == 0 || strcasecmp(category, "phishing") == 0)
-        return check_seed_list(domain, s_security_seeds);
-    if (strcasecmp(category, "scam_fraud") == 0 || strcasecmp(category, "scam") == 0 || strcasecmp(category, "fraud") == 0)
-        return check_seed_list(domain, s_scam_fraud_seeds);
-    if (strcasecmp(category, "drugs_weapons") == 0 || strcasecmp(category, "drugs") == 0 || strcasecmp(category, "weapons") == 0)
-        return check_seed_list(domain, s_drugs_weapons_seeds);
-    if (strcasecmp(category, "hate_violence") == 0 || strcasecmp(category, "violence") == 0 || strcasecmp(category, "hate") == 0)
-        return check_seed_list(domain, s_hate_violence_seeds);
-    if (strcasecmp(category, "cults") == 0 || strcasecmp(category, "cult") == 0)
-        return check_seed_list(domain, s_cults_seeds);
-    if (strcasecmp(category, "shopping") == 0)
-        return check_seed_list(domain, s_shopping_seeds);
-    if (strcasecmp(category, "jobs") == 0 || strcasecmp(category, "jobsearch") == 0)
-        return check_seed_list(domain, s_jobs_seeds);
+        in_seeds = check_seed_list(domain, s_streaming_seeds);
+    else if (strcasecmp(category, "social") == 0 || strcasecmp(category, "social_media") == 0)
+        in_seeds = check_seed_list(domain, s_social_seeds);
+    else if (strcasecmp(category, "gambling") == 0 || strcasecmp(category, "betting") == 0)
+        in_seeds = check_seed_list(domain, s_gambling_seeds);
+    else if (strcasecmp(category, "gaming") == 0 || strcasecmp(category, "games") == 0)
+        in_seeds = check_seed_list(domain, s_gaming_seeds);
+    else if (strcasecmp(category, "adult") == 0 || strcasecmp(category, "porn") == 0)
+        in_seeds = check_seed_list(domain, s_adult_seeds);
+    else if (strcasecmp(category, "crypto") == 0)
+        in_seeds = check_seed_list(domain, s_crypto_seeds);
+    else if (strcasecmp(category, "warez") == 0 || strcasecmp(category, "p2p") == 0 || strcasecmp(category, "torrent") == 0)
+        in_seeds = check_seed_list(domain, s_warez_seeds);
+    else if (strcasecmp(category, "bypass") == 0 || strcasecmp(category, "vpn") == 0 || strcasecmp(category, "proxy") == 0)
+        in_seeds = check_seed_list(domain, s_bypass_seeds);
+    else if (strcasecmp(category, "tailscale") == 0)
+        in_seeds = check_seed_list(domain, s_tailscale_seeds);
+    else if (strcasecmp(category, "wireguard") == 0)
+        in_seeds = check_seed_list(domain, s_wireguard_seeds);
+    else if (strcasecmp(category, "openvpn") == 0)
+        in_seeds = check_seed_list(domain, s_openvpn_seeds);
+    else if (strcasecmp(category, "tor") == 0)
+        in_seeds = check_seed_list(domain, s_tor_seeds);
+    else if (strcasecmp(category, "dating") == 0)
+        in_seeds = check_seed_list(domain, s_dating_seeds);
+    else if (strcasecmp(category, "ads") == 0 || strcasecmp(category, "advertising") == 0)
+        in_seeds = check_seed_list(domain, s_ads_seeds);
+    else if (strcasecmp(category, "shorteners") == 0 || strcasecmp(category, "shortener") == 0)
+        in_seeds = check_seed_list(domain, s_shorteners_seeds);
+    else if (strcasecmp(category, "webmail") == 0 || strcasecmp(category, "mail") == 0)
+        in_seeds = check_seed_list(domain, s_webmail_seeds);
+    else if (strcasecmp(category, "astrology") == 0 || strcasecmp(category, "fal") == 0)
+        in_seeds = check_seed_list(domain, s_astrology_seeds);
+    else if (strcasecmp(category, "cheating") == 0 || strcasecmp(category, "homework") == 0)
+        in_seeds = check_seed_list(domain, s_cheating_seeds);
+    else if (strcasecmp(category, "security") == 0 || strcasecmp(category, "malware") == 0 || strcasecmp(category, "phishing") == 0)
+        in_seeds = check_seed_list(domain, s_security_seeds);
+    else if (strcasecmp(category, "scam_fraud") == 0 || strcasecmp(category, "scam") == 0 || strcasecmp(category, "fraud") == 0)
+        in_seeds = check_seed_list(domain, s_scam_fraud_seeds);
+    else if (strcasecmp(category, "drugs_weapons") == 0 || strcasecmp(category, "drugs") == 0 || strcasecmp(category, "weapons") == 0)
+        in_seeds = check_seed_list(domain, s_drugs_weapons_seeds);
+    else if (strcasecmp(category, "hate_violence") == 0 || strcasecmp(category, "violence") == 0 || strcasecmp(category, "hate") == 0)
+        in_seeds = check_seed_list(domain, s_hate_violence_seeds);
+    else if (strcasecmp(category, "cults") == 0 || strcasecmp(category, "cult") == 0)
+        in_seeds = check_seed_list(domain, s_cults_seeds);
+    else if (strcasecmp(category, "shopping") == 0)
+        in_seeds = check_seed_list(domain, s_shopping_seeds);
+    else if (strcasecmp(category, "jobs") == 0 || strcasecmp(category, "jobsearch") == 0)
+        in_seeds = check_seed_list(domain, s_jobs_seeds);
 
-    return false;
+    if (in_seeds) return true;
+
+    /* Check external categorized feeds (mmap) */
+    return feed_is_domain_in_category(domain, category);
 }
 
 static bool check_csv_categories(const char *domain, const char *csv_list) {

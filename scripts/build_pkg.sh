@@ -6,17 +6,19 @@
 set -e
 
 PKG_NAME="poseafilter"
-PKG_VERSION="1.0.0"
+PKG_VERSION="1.1.0"
 STAGE_DIR="/tmp/poseafilter_stage"
 
 echo "[*] Building PoseaFilter FreeBSD package v${PKG_VERSION}..."
 
 rm -rf "${STAGE_DIR}"
 mkdir -p "${STAGE_DIR}/usr/local/sbin"
+mkdir -p "${STAGE_DIR}/usr/local/bin"
 mkdir -p "${STAGE_DIR}/usr/local/etc/rc.d"
+mkdir -p "${STAGE_DIR}/usr/local/etc/newsyslog.conf.d"
 mkdir -p "${STAGE_DIR}/usr/local/pkg"
 mkdir -p "${STAGE_DIR}/usr/local/www"
-mkdir -p "${STAGE_DIR}/var/etc/poseafilter"
+mkdir -p "${STAGE_DIR}/var/etc/poseafilter/categories"
 mkdir -p "${STAGE_DIR}/var/log/poseafilter"
 
 SCRIPT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
@@ -27,7 +29,14 @@ make clean
 make
 
 cp "${SCRIPT_DIR}/daemon/poseafilterd" "${STAGE_DIR}/usr/local/sbin/"
+if [ -f "${SCRIPT_DIR}/pfsense-pkg/usr/local/bin/poseactl" ]; then
+    cp "${SCRIPT_DIR}/pfsense-pkg/usr/local/bin/poseactl" "${STAGE_DIR}/usr/local/bin/"
+    chmod 755 "${STAGE_DIR}/usr/local/bin/poseactl"
+fi
 cp "${SCRIPT_DIR}/pfsense-pkg/etc/rc.d/poseafilter.sh" "${STAGE_DIR}/usr/local/etc/rc.d/"
+if [ -f "${SCRIPT_DIR}/pfsense-pkg/etc/newsyslog.conf.d/poseafilter.conf" ]; then
+    cp "${SCRIPT_DIR}/pfsense-pkg/etc/newsyslog.conf.d/poseafilter.conf" "${STAGE_DIR}/usr/local/etc/newsyslog.conf.d/"
+fi
 cp "${SCRIPT_DIR}/pfsense-pkg/usr/local/pkg/"* "${STAGE_DIR}/usr/local/pkg/"
 cp "${SCRIPT_DIR}/pfsense-pkg/usr/local/www/"* "${STAGE_DIR}/usr/local/www/"
 

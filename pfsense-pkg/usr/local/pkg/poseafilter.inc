@@ -3,7 +3,7 @@
  * poseafilter.inc - PoseaFilter UTM Web Filter Package for pfSense
  *
  * Provides backend hooks, configuration sync, PF firewall integration,
- * and service lifecycle management for pfSense.
+ * newsyslog rotation, CARP HA sync, and service lifecycle management.
  */
 
 require_once("config.inc");
@@ -12,14 +12,16 @@ require_once("pfsense-utils.inc");
 require_once("service-utils.inc");
 require_once("filter.inc");
 
-define('POSEAFILTER_CONF_DIR', '/var/etc/poseafilter');
-define('POSEAFILTER_LOG_DIR', '/var/log/poseafilter');
-define('POSEAFILTER_RC', '/usr/local/etc/rc.d/poseafilter.sh');
+if (!defined('POSEAFILTER_CONF_DIR')) define('POSEAFILTER_CONF_DIR', '/var/etc/poseafilter');
+if (!defined('POSEAFILTER_CAT_DIR')) define('POSEAFILTER_CAT_DIR', POSEAFILTER_CONF_DIR . '/categories');
+if (!defined('POSEAFILTER_LOG_DIR')) define('POSEAFILTER_LOG_DIR', '/var/log/poseafilter');
+if (!defined('POSEAFILTER_RC')) define('POSEAFILTER_RC', '/usr/local/etc/rc.d/poseafilter.sh');
 
 function poseafilter_install() {
     global $config;
 
     safe_mkdir(POSEAFILTER_CONF_DIR);
+    safe_mkdir(POSEAFILTER_CAT_DIR);
     safe_mkdir(POSEAFILTER_LOG_DIR);
 
     /* Generate default config if not present */
@@ -34,7 +36,13 @@ function poseafilter_install() {
             "pf_table_sync" => true,
             "pf_table_name" => "poseafilter_blocked",
             "log_queries" => true,
-            "block_doh" => true
+            "block_doh" => true,
+            "worker_threads" => 4,
+            "enable_dns_tcp" => true,
+            "enable_dns_cache" => true,
+            "dns_cache_size" => 10000,
+            "enable_sni_filter" => false,
+            "sni_filter_port" => 8444
         ];
         file_put_contents(POSEAFILTER_CONF_DIR . '/config.json', json_encode($default_cfg, JSON_PRETTY_PRINT));
     }
@@ -66,10 +74,13 @@ function poseafilter_install() {
         file_put_contents(POSEAFILTER_CONF_DIR . '/rules.json', json_encode($default_rules, JSON_PRETTY_PRINT));
     }
 
-    /* Seed initial threat feeds (e.g. USOM / OISD / StevenBlack) */
+    /* Seed initial threat feeds */
     if (!file_exists(POSEAFILTER_CONF_DIR . '/feeds.txt')) {
         file_put_contents(POSEAFILTER_CONF_DIR . '/feeds.txt', "# Threat and UTM Blacklist Feed\n");
     }
+
+    /* Install newsyslog log rotation */
+    poseafilter_configure_newsyslog();
 
     poseafilter_resync();
 }
@@ -77,7 +88,19 @@ function poseafilter_install() {
 function poseafilter_deinstall() {
     mwexec(POSEAFILTER_RC . " stop");
     unlink_if_exists(POSEAFILTER_RC);
+    unlink_if_exists('/usr/local/etc/newsyslog.conf.d/poseafilter.conf');
     filter_configure();
+}
+
+function poseafilter_configure_newsyslog() {
+    $dir = '/usr/local/etc/newsyslog.conf.d';
+    if (!is_dir($dir)) {
+        @mkdir($dir, 0755, true);
+    }
+    $conf = "# PoseaFilter Automated Log Rotation\n"
+          . "/var/log/poseafilter/filter.log      640  7  10000  *  JC  /var/run/poseafilter.pid  1\n"
+          . "/var/log/poseafilter/poseafilter.log 640  7  5000   *  JC  /var/run/poseafilter.pid  1\n";
+    file_put_contents("{$dir}/poseafilter.conf", $conf);
 }
 
 function poseafilter_resync() {
@@ -99,7 +122,13 @@ function poseafilter_resync() {
         "enable_safesearch" => isset($pconfig['enable_safesearch']),
         "enable_youtube_restricted" => isset($pconfig['enable_youtube_restricted']),
         "enable_block_page" => isset($pconfig['enable_block_page']),
-        "block_page_ip" => !empty($pconfig['block_page_ip']) ? $pconfig['block_page_ip'] : ($config['interfaces']['lan']['ipaddr'] ?? "192.168.2.1")
+        "block_page_ip" => !empty($pconfig['block_page_ip']) ? $pconfig['block_page_ip'] : ($config['interfaces']['lan']['ipaddr'] ?? "192.168.2.1"),
+        "worker_threads" => !empty($pconfig['worker_threads']) ? intval($pconfig['worker_threads']) : 4,
+        "enable_dns_tcp" => !isset($pconfig['disable_dns_tcp']),
+        "enable_dns_cache" => !isset($pconfig['disable_dns_cache']),
+        "dns_cache_size" => !empty($pconfig['dns_cache_size']) ? intval($pconfig['dns_cache_size']) : 10000,
+        "enable_sni_filter" => isset($pconfig['enable_sni_filter']),
+        "sni_filter_port" => !empty($pconfig['sni_filter_port']) ? intval($pconfig['sni_filter_port']) : 8444
     ];
 
     // Sync custom block HTML if set in XML form
@@ -108,10 +137,12 @@ function poseafilter_resync() {
         @file_put_contents('/var/etc/poseafilter/block_custom.html', $pconfig['custom_block_html']);
     }
 
-    // Configure nginx on port 80 for direct block page serving (no IP/448 redirect)
+    // Configure nginx on port 80 for direct block page serving (preserved per configuration)
     if (!empty($cfg['enable_block_page'])) {
         poseafilter_configure_nginx_port80();
     }
+
+    poseafilter_configure_newsyslog();
 
     file_put_contents(POSEAFILTER_CONF_DIR . '/config.json', json_encode($cfg, JSON_PRETTY_PRINT));
 
@@ -127,14 +158,13 @@ function poseafilter_resync() {
         }
     }
 
-    /* Rebuild PF packet filter rules to redirect port 53 and block table */
+    /* Rebuild PF packet filter rules */
     filter_configure();
+
+    /* CARP HA Sync if configured */
+    poseafilter_xmlrpc_sync();
 }
 
-/*
- * pfSense Hook: filter_generate_opt_rules()
- * Automatically injected into pfSense PF ruleset
- */
 function poseafilter_reload() {
     mwexec(POSEAFILTER_RC . " restart");
     mwexec("/sbin/pfctl -t poseafilter_blocked -T flush 2>/dev/null");
@@ -151,17 +181,24 @@ function poseafilter_generate_rules($type) {
 
     $interfaces = !empty($pconfig['interfaces']) ? explode(',', $pconfig['interfaces']) : ['lan'];
     $listen_port = !empty($pconfig['listen_port']) ? $pconfig['listen_port'] : "5353";
+    $sni_port = !empty($pconfig['sni_filter_port']) ? $pconfig['sni_filter_port'] : "8444";
+    $enable_sni = isset($pconfig['enable_sni_filter']);
 
     switch ($type) {
         case 'nat':
         case 'rdr':
-            /* Redirect incoming LAN DNS queries (UDP 53) to PoseaFilter transparent proxy */
+            /* Redirect incoming LAN DNS queries (UDP & TCP 53) to PoseaFilter */
             foreach ($interfaces as $if) {
                 $if_real = get_real_interface($if);
                 if (!empty($if_real)) {
                     $rules .= "# PoseaFilter Transparent DNS Interception on {$if}\n";
                     $rules .= "rdr on {$if_real} proto udp from any to ! 127.0.0.1 port 53 -> 127.0.0.1 port {$listen_port}\n";
                     $rules .= "rdr on {$if_real} proto tcp from any to ! 127.0.0.1 port 53 -> 127.0.0.1 port {$listen_port}\n";
+
+                    if ($enable_sni) {
+                        $rules .= "# PoseaFilter Transparent TLS SNI Inspection on {$if}\n";
+                        $rules .= "rdr on {$if_real} proto tcp from any to ! 127.0.0.1 port 443 -> 127.0.0.1 port {$sni_port}\n";
+                    }
                 }
             }
             break;
@@ -179,13 +216,22 @@ function poseafilter_generate_rules($type) {
                 }
             }
 
-            /* Block DoT (853) to stop evasion */
+            /* Block DoT (Port 853) & Public DoH IPs to prevent evasion */
             if (isset($pconfig['block_doh'])) {
-                $rules .= "# PoseaFilter DoT Evasion Prevention\n";
+                $doh_file = POSEAFILTER_CONF_DIR . '/doh_ips.txt';
+                if (file_exists($doh_file) && filesize($doh_file) > 10) {
+                    $rules .= "# PoseaFilter DoH Evasion Prevention Table\n";
+                    $rules .= "table <poseafilter_doh_ips> persist file \"{$doh_file}\"\n";
+                }
+
+                $rules .= "# PoseaFilter DoT/DoH Evasion Prevention\n";
                 foreach ($interfaces as $if) {
                     $if_real = get_real_interface($if);
                     if (!empty($if_real)) {
                         $rules .= "block in quick on {$if_real} proto { tcp, udp } to any port 853 label \"PoseaFilter Block DoT Evasion\"\n";
+                        if (file_exists($doh_file) && filesize($doh_file) > 10) {
+                            $rules .= "block in quick on {$if_real} proto tcp to <poseafilter_doh_ips> port 443 label \"PoseaFilter Block DoH Evasion\"\n";
+                        }
                     }
                 }
             }
@@ -205,6 +251,8 @@ function poseafilter_get_stats() {
         "total_queries" => 0,
         "total_blocked" => 0,
         "total_passed" => 0,
+        "cache_hits" => 0,
+        "cache_misses" => 0,
         "active_rules" => 0
     ];
 }
@@ -216,7 +264,7 @@ function poseafilter_get_block_settings() {
         if (is_array($data)) return $data;
     }
     return [
-        'https_mode' => 'block_page' // 'block_page' or 'drop'
+        'https_mode' => 'block_page'
     ];
 }
 
@@ -271,7 +319,7 @@ function poseafilter_configure_nginx_port80() {
     $base_conf = rtrim(substr($conf, 0, $server_pos));
     $mgmt_regex = '^(192\\.168\\.|10\\.|172\\.16\\.|127\\.0\\.0\\.1|185\\.189\\.54\\.89|fw\\.)';
 
-    // 1. Port 80 Block Server (Always Active)
+    // 1. Port 80 Block Server
     $new_blocks = "
 \tserver {
 \t\tlisten 80;
@@ -320,3 +368,50 @@ function poseafilter_configure_nginx_port80() {
     file_put_contents($conf_path, $final_conf);
     @shell_exec('/usr/local/sbin/nginx -t -c ' . escapeshellarg($conf_path) . ' && killall -HUP nginx 2>/dev/null');
 }
+
+/* CARP / High Availability XMLRPC Synchronization */
+function poseafilter_xmlrpc_sync() {
+    global $config;
+
+    $pconfig = $config['installedpackages']['poseafilter']['config'][0] ?? [];
+    if (empty($pconfig['enable_xmlrpc_sync']) || empty($pconfig['xmlrpc_sync_ip'])) {
+        return;
+    }
+
+    $target_ip = trim($pconfig['xmlrpc_sync_ip']);
+    $username = !empty($pconfig['xmlrpc_username']) ? $pconfig['xmlrpc_username'] : 'admin';
+    $password = !empty($pconfig['xmlrpc_password']) ? $pconfig['xmlrpc_password'] : '';
+
+    if (empty($password)) return;
+
+    $sync_data = [
+        'config' => $pconfig,
+        'rules' => file_exists(POSEAFILTER_CONF_DIR . '/rules.json') ? json_decode(file_get_contents(POSEAFILTER_CONF_DIR . '/rules.json'), true) : [],
+        'block_settings' => poseafilter_get_block_settings()
+    ];
+
+    $url = "https://{$target_ip}/xmlrpc.php";
+    $xml_payload = xmlrpc_encode_request("pfsense.merge_installedpackages_section_xmlrpc", [
+        $username,
+        $password,
+        ['poseafilter_sync' => $sync_data]
+    ]);
+
+    $ch = curl_init($url);
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+    curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
+    curl_setopt($ch, CURLOPT_TIMEOUT, 15);
+    curl_setopt($ch, CURLOPT_POST, true);
+    curl_setopt($ch, CURLOPT_POSTFIELDS, $xml_payload);
+    $resp = curl_exec($ch);
+    $err = curl_error($ch);
+    curl_close($ch);
+
+    if ($err) {
+        log_error("[PoseaFilter] XMLRPC Sync to {$target_ip} failed: {$err}");
+    } else {
+        log_error("[PoseaFilter] XMLRPC Sync to {$target_ip} successfully completed.");
+    }
+}
+?>

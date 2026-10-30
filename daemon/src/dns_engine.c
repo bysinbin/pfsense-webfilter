@@ -15,12 +15,19 @@
 #include <arpa/inet.h>
 #include <pthread.h>
 #include "../include/poseafilter.h"
+#include "../include/dns_cache.h"
 
-#define DNS_MAX_PACKET 4096
+#define DNS_MAX_PACKET  4096
+#define MAX_UDP_WORKERS 8
 
-static int s_dns_sock = -1;
-static pthread_t s_dns_thread;
-static volatile bool s_dns_running = false;
+static int s_udp_socks[MAX_UDP_WORKERS];
+static pthread_t s_udp_threads[MAX_UDP_WORKERS];
+static int s_num_udp_workers = 0;
+
+static int s_tcp_sock = -1;
+static pthread_t s_tcp_thread;
+
+static volatile bool s_engine_running = false;
 
 /* Helper: parse DNS wire format QNAME */
 static int parse_dns_qname(const uint8_t *buf, size_t len, size_t offset, char *out_domain, size_t max_out, uint16_t *qtype_out) {
@@ -77,7 +84,7 @@ static int parse_dns_qname(const uint8_t *buf, size_t len, size_t offset, char *
     return (int)pos;
 }
 
-/* Helper: synthesize RFC-compliant DNS Sinkhole response (strips OPT/EDNS to guarantee 0.0.0.0 parsing) */
+/* Helper: synthesize RFC-compliant DNS Sinkhole response */
 static size_t build_sinkhole_response(const uint8_t *query, size_t qlen,
                                       uint8_t *resp, size_t max_resp,
                                       size_t question_end,
@@ -96,13 +103,13 @@ static size_t build_sinkhole_response(const uint8_t *query, size_t qlen,
     resp[4] = 0x00;
     resp[5] = 0x01;
 
-    /* NSCOUNT = 0, ARCOUNT = 0 (strip OPT/EDNS pseudo-RR to prevent parser errors) */
+    /* NSCOUNT = 0, ARCOUNT = 0 */
     resp[8] = 0x00;
     resp[9] = 0x00;
     resp[10] = 0x00;
     resp[11] = 0x00;
 
-    /* Copy Question section (from byte 12 to question_end) */
+    /* Copy Question section */
     memcpy(resp + 12, query + 12, question_end - 12);
 
     if (qtype == 28) {
@@ -112,7 +119,7 @@ static size_t build_sinkhole_response(const uint8_t *query, size_t qlen,
         return question_end;
     }
 
-    /* A query (or default): return 1 answer */
+    /* A query: return 1 answer */
     resp[6] = 0x00;
     resp[7] = 0x01; /* ANCOUNT = 1 */
 
@@ -126,7 +133,7 @@ static size_t build_sinkhole_response(const uint8_t *query, size_t qlen,
     /* CLASS: IN (0x0001) */
     resp[pos++] = 0x00;
     resp[pos++] = 0x01;
-    /* TTL: 5 seconds (0x00000005) for ultra-fast unblock / policy change response */
+    /* TTL: 5 seconds */
     resp[pos++] = 0x00;
     resp[pos++] = 0x00;
     resp[pos++] = 0x00;
@@ -166,7 +173,7 @@ static size_t forward_dns_query(const uint8_t *query, size_t qlen, uint8_t *resp
     int sock = socket(AF_INET, SOCK_DGRAM, 0);
     if (sock < 0) return 0;
 
-    struct timeval tv = { .tv_sec = 2, .tv_usec = 500000 }; /* 2.5s timeout */
+    struct timeval tv = { .tv_sec = 1, .tv_usec = 500000 }; /* 1.5s timeout */
     setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
 
     struct sockaddr_in up_addr;
@@ -186,6 +193,28 @@ static size_t forward_dns_query(const uint8_t *query, size_t qlen, uint8_t *resp
     return (n > 0) ? (size_t)n : 0;
 }
 
+static uint32_t parse_answer_ttl(const uint8_t *resp, size_t len, size_t question_end) {
+    if (len < question_end + 10) return 60;
+    size_t pos = question_end;
+
+    /* Skip Answer Name */
+    if ((resp[pos] & 0xC0) == 0xC0) {
+        pos += 2;
+    } else {
+        while (pos < len && resp[pos] != 0) {
+            pos += 1 + resp[pos];
+        }
+        pos += 1;
+    }
+
+    if (pos + 8 <= len) {
+        pos += 4; /* Skip TYPE (2) and CLASS (2) */
+        uint32_t ttl = (resp[pos] << 24) | (resp[pos + 1] << 16) | (resp[pos + 2] << 8) | resp[pos + 3];
+        return (ttl > 0 && ttl <= 86400) ? ttl : 60;
+    }
+    return 60;
+}
+
 static bool match_domain_exact_or_sub(const char *domain, const char *base) {
     if (!domain || !base) return false;
     if (strcasecmp(domain, base) == 0) return true;
@@ -199,7 +228,7 @@ static bool match_domain_exact_or_sub(const char *domain, const char *base) {
 
 static bool check_safesearch_rewrite(const char *domain, uint16_t qtype, const uint8_t *query, size_t qlen,
                                      uint8_t *resp, size_t max_resp, size_t question_end, size_t *out_len) {
-    if (qtype != 1) return false; /* IPv4 A query only */
+    if (qtype != 1) return false;
 
     const char *target_ip = NULL;
 
@@ -234,149 +263,276 @@ static bool check_safesearch_rewrite(const char *domain, uint16_t qtype, const u
     return false;
 }
 
-static void *dns_worker_loop(void *arg) {
-    (void)arg;
+/* Core packet processor shared between UDP and TCP */
+static size_t process_dns_query(const uint8_t *req, size_t req_len,
+                                const char *client_ip,
+                                uint8_t *resp, size_t max_resp,
+                                bool *should_drop) {
+    *should_drop = false;
+    if (req_len < 12) return 0;
+
+    char domain[256] = {0};
+    uint16_t qtype = 1;
+    int qname_pos = parse_dns_qname(req, req_len, 12, domain, sizeof(domain), &qtype);
+
+    if (qname_pos < 12 || !domain[0]) {
+        return forward_dns_query(req, req_len, resp, max_resp);
+    }
+
+    __sync_fetch_and_add(&g_filter.total_queries, 1);
+
+    size_t question_end = (size_t)qname_pos + 4;
+    if (question_end > req_len) question_end = req_len;
+
+    /* 1. SafeSearch / YouTube Restricted VIP */
+    size_t safe_len = 0;
+    if (check_safesearch_rewrite(domain, qtype, req, req_len, resp, max_resp, question_end, &safe_len)) {
+        __sync_fetch_and_add(&g_filter.total_passed, 1);
+        log_event("DNS_PASS", client_ip, domain, "SAFESEARCH", "Enforced SafeSearch VIP");
+        return safe_len;
+    }
+
+    /* 2. UTM Policy Match */
+    char action[32] = "pass";
+    char reason[128] = "Allowed";
+    bool is_blocked = filter_match_client(domain, client_ip, action, sizeof(action), reason, sizeof(reason));
+
+    if (is_blocked) {
+        __sync_fetch_and_add(&g_filter.total_blocked, 1);
+
+        if (strcmp(action, "drop") == 0) {
+            *should_drop = true;
+            log_event("DNS_DROP", client_ip, domain, "DROP", reason);
+            return 0;
+        }
+
+        const char *sink_ip = "0.0.0.0";
+        if (g_filter.config.enable_block_page && g_filter.config.block_page_ip[0]) {
+            sink_ip = g_filter.config.block_page_ip;
+        } else if (g_filter.config.sinkhole_ip[0]) {
+            sink_ip = g_filter.config.sinkhole_ip;
+        }
+
+        size_t rlen = build_sinkhole_response(req, req_len, resp, max_resp, question_end, qtype, sink_ip);
+        log_event("DNS_BLOCK", client_ip, domain, "SINKHOLE", reason);
+        pf_sync_domain_ips(domain);
+        return rlen;
+    }
+
+    /* 3. Query Allowed: Check LRU DNS Cache */
+    __sync_fetch_and_add(&g_filter.total_passed, 1);
+
+    uint16_t tx_id = (req[0] << 8) | req[1];
+    size_t cached_len = 0;
+    if (g_filter.config.enable_dns_cache &&
+        dns_cache_lookup(domain, qtype, tx_id, resp, max_resp, &cached_len)) {
+        __sync_fetch_and_add(&g_filter.cache_hits, 1);
+        if (g_filter.config.log_queries) {
+            log_event("DNS_CACHE", client_ip, domain, "PASS", "Cached");
+        }
+        return cached_len;
+    }
+
+    __sync_fetch_and_add(&g_filter.cache_misses, 1);
+
+    /* 4. Forward to Upstream DNS */
+    size_t rlen = forward_dns_query(req, req_len, resp, max_resp);
+    if (rlen > 0) {
+        if (g_filter.config.enable_dns_cache) {
+            uint32_t ttl = parse_answer_ttl(resp, rlen, question_end);
+            dns_cache_insert(domain, qtype, resp, rlen, ttl);
+        }
+        if (g_filter.config.log_queries) {
+            log_event("DNS_PASS", client_ip, domain, "PASS", reason);
+        }
+    }
+
+    return rlen;
+}
+
+/* UDP Worker Thread */
+static void *udp_worker_loop(void *arg) {
+    int sock_fd = *(int *)arg;
     uint8_t req_buf[DNS_MAX_PACKET];
     uint8_t resp_buf[DNS_MAX_PACKET];
 
-    log_msg(LOG_LEVEL_INFO, "PoseaFilter DNS Engine listening on %s:%d (Upstream: %s)",
-            g_filter.config.listen_ip[0] ? g_filter.config.listen_ip : "0.0.0.0",
-            g_filter.config.listen_port,
-            g_filter.config.upstream_dns);
+    struct pollfd pfd = { .fd = sock_fd, .events = POLLIN };
 
-    struct pollfd pfd = { .fd = s_dns_sock, .events = POLLIN };
-
-    while (s_dns_running) {
+    while (s_engine_running) {
         int pr = poll(&pfd, 1, 1000);
         if (pr <= 0) continue;
 
         struct sockaddr_in client_addr;
         socklen_t client_len = sizeof(client_addr);
-        ssize_t n = recvfrom(s_dns_sock, req_buf, sizeof(req_buf), 0,
+        ssize_t n = recvfrom(sock_fd, req_buf, sizeof(req_buf), 0,
                              (struct sockaddr *)&client_addr, &client_len);
         if (n < 12) continue;
 
         char client_ip[INET_ADDRSTRLEN] = {0};
         inet_ntop(AF_INET, &client_addr.sin_addr, client_ip, sizeof(client_ip));
 
-        char domain[256] = {0};
-        uint16_t qtype = 1;
-        int qname_pos = parse_dns_qname(req_buf, n, 12, domain, sizeof(domain), &qtype);
+        bool should_drop = false;
+        size_t resp_len = process_dns_query(req_buf, (size_t)n, client_ip, resp_buf, sizeof(resp_buf), &should_drop);
 
-        if (qname_pos < 12 || !domain[0]) {
-            /* Forward unparseable query */
-            size_t rlen = forward_dns_query(req_buf, n, resp_buf, sizeof(resp_buf));
-            if (rlen > 0) {
-                sendto(s_dns_sock, resp_buf, rlen, 0, (struct sockaddr *)&client_addr, client_len);
-            }
-            continue;
-        }
-
-        g_filter.total_queries++;
-
-        /* Check SafeSearch / YouTube Restricted Enforcement */
-        size_t safe_len = 0;
-        size_t question_end = (size_t)qname_pos + 4;
-        if (question_end > (size_t)n) question_end = n;
-        if (check_safesearch_rewrite(domain, qtype, req_buf, n, resp_buf, sizeof(resp_buf), question_end, &safe_len)) {
-            g_filter.total_passed++;
-            sendto(s_dns_sock, resp_buf, safe_len, 0, (struct sockaddr *)&client_addr, client_len);
-            log_event("DNS_PASS", client_ip, domain, "SAFESEARCH", "Enforced SafeSearch VIP");
-            continue;
-        }
-
-        char action[32] = "pass";
-        char reason[128] = "Allowed";
-        bool is_blocked = filter_match_client(domain, client_ip, action, sizeof(action), reason, sizeof(reason));
-
-        if (is_blocked) {
-            g_filter.total_blocked++;
-
-            if (strcmp(action, "drop") == 0) {
-                /* Drop packet silently */
-                log_event("DNS_DROP", client_ip, domain, "DROP", reason);
-                continue;
-            }
-
-            /* Sinkhole response */
-            const char *sink_ip = "0.0.0.0";
-            if (g_filter.config.enable_block_page && g_filter.config.block_page_ip[0]) {
-                sink_ip = g_filter.config.block_page_ip;
-            } else if (g_filter.config.sinkhole_ip[0]) {
-                sink_ip = g_filter.config.sinkhole_ip;
-            }
-            size_t rlen = build_sinkhole_response(req_buf, n, resp_buf, sizeof(resp_buf), question_end, qtype, sink_ip);
-            if (rlen > 0) {
-                sendto(s_dns_sock, resp_buf, rlen, 0, (struct sockaddr *)&client_addr, client_len);
-            }
-
-            log_event("DNS_BLOCK", client_ip, domain, "SINKHOLE", reason);
-            pf_sync_domain_ips(domain);
-        } else {
-            g_filter.total_passed++;
-
-            /* Forward query to upstream DNS */
-            size_t rlen = forward_dns_query(req_buf, n, resp_buf, sizeof(resp_buf));
-            if (rlen > 0) {
-                sendto(s_dns_sock, resp_buf, rlen, 0, (struct sockaddr *)&client_addr, client_len);
-            }
-
-            if (g_filter.config.log_queries) {
-                log_event("DNS_PASS", client_ip, domain, "PASS", reason);
-            }
+        if (!should_drop && resp_len > 0) {
+            sendto(sock_fd, resp_buf, resp_len, 0, (struct sockaddr *)&client_addr, client_len);
         }
     }
 
     return NULL;
 }
 
+/* TCP DNS Server Thread (Port 5353 TCP / RFC 7766) */
+static void *tcp_server_loop(void *arg) {
+    (void)arg;
+    struct pollfd pfd = { .fd = s_tcp_sock, .events = POLLIN };
+
+    while (s_engine_running) {
+        int pr = poll(&pfd, 1, 1000);
+        if (pr <= 0) continue;
+
+        struct sockaddr_in client_addr;
+        socklen_t client_len = sizeof(client_addr);
+        int client_fd = accept(s_tcp_sock, (struct sockaddr *)&client_addr, &client_len);
+        if (client_fd < 0) continue;
+
+        char client_ip[INET_ADDRSTRLEN] = {0};
+        inet_ntop(AF_INET, &client_addr.sin_addr, client_ip, sizeof(client_ip));
+
+        /* Read 2-byte length prefix */
+        uint8_t len_buf[2];
+        ssize_t n = recv(client_fd, len_buf, 2, MSG_WAITALL);
+        if (n == 2) {
+            uint16_t msg_len = (len_buf[0] << 8) | len_buf[1];
+            if (msg_len > 0 && msg_len <= DNS_MAX_PACKET) {
+                uint8_t req_buf[DNS_MAX_PACKET];
+                ssize_t qn = recv(client_fd, req_buf, msg_len, MSG_WAITALL);
+                if (qn == msg_len) {
+                    uint8_t resp_buf[DNS_MAX_PACKET];
+                    bool should_drop = false;
+                    size_t rlen = process_dns_query(req_buf, (size_t)qn, client_ip, resp_buf, sizeof(resp_buf), &should_drop);
+
+                    if (!should_drop && rlen > 0) {
+                        uint8_t out_hdr[2];
+                        out_hdr[0] = (uint8_t)((rlen >> 8) & 0xFF);
+                        out_hdr[1] = (uint8_t)(rlen & 0xFF);
+                        send(client_fd, out_hdr, 2, 0);
+                        send(client_fd, resp_buf, rlen, 0);
+                    }
+                }
+            }
+        }
+        close(client_fd);
+    }
+    return NULL;
+}
+
 int dns_engine_start(void) {
-    s_dns_sock = socket(AF_INET, SOCK_DGRAM, 0);
-    if (s_dns_sock < 0) {
-        log_msg(LOG_LEVEL_ERROR, "Failed to create DNS UDP socket: %s", strerror(errno));
-        return -1;
+    /* Initialize LRU DNS Cache */
+    if (g_filter.config.enable_dns_cache) {
+        size_t cache_size = g_filter.config.dns_cache_size > 0 ? (size_t)g_filter.config.dns_cache_size : DNS_CACHE_DEFAULT_SIZE;
+        dns_cache_init(cache_size);
+        log_msg(LOG_LEVEL_INFO, "In-Memory LRU DNS Cache initialized (capacity: %zu)", cache_size);
     }
 
-    int opt = 1;
-    setsockopt(s_dns_sock, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
+    int port = g_filter.config.listen_port > 0 ? g_filter.config.listen_port : 5353;
+    int num_workers = g_filter.config.worker_threads > 0 ? g_filter.config.worker_threads : 4;
+    if (num_workers > MAX_UDP_WORKERS) num_workers = MAX_UDP_WORKERS;
+
+    s_engine_running = true;
+    s_num_udp_workers = 0;
 
     struct sockaddr_in serv_addr;
     memset(&serv_addr, 0, sizeof(serv_addr));
     serv_addr.sin_family = AF_INET;
-    serv_addr.sin_port = htons(g_filter.config.listen_port);
-
+    serv_addr.sin_port = htons(port);
     if (g_filter.config.listen_ip[0] && strcmp(g_filter.config.listen_ip, "0.0.0.0") != 0) {
         inet_aton(g_filter.config.listen_ip, &serv_addr.sin_addr);
     } else {
         serv_addr.sin_addr.s_addr = INADDR_ANY;
     }
 
-    if (bind(s_dns_sock, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0) {
-        log_msg(LOG_LEVEL_ERROR, "Failed to bind DNS UDP port %d: %s", g_filter.config.listen_port, strerror(errno));
-        close(s_dns_sock);
-        s_dns_sock = -1;
-        return -1;
+    /* Start UDP Worker Pool (using SO_REUSEPORT if available) */
+    int primary_sock = -1;
+    for (int i = 0; i < num_workers; i++) {
+        int sock = socket(AF_INET, SOCK_DGRAM, 0);
+        if (sock < 0) break;
+
+        int opt = 1;
+        setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
+#ifdef SO_REUSEPORT
+        setsockopt(sock, SOL_SOCKET, SO_REUSEPORT, &opt, sizeof(opt));
+#endif
+
+        if (bind(sock, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0) {
+            close(sock);
+            if (i == 0) {
+                log_msg(LOG_LEVEL_ERROR, "Failed to bind UDP port %d: %s", port, strerror(errno));
+                s_engine_running = false;
+                return -1;
+            }
+            /* If SO_REUSEPORT not supported by OS, fallback to sharing primary socket */
+            sock = primary_sock;
+        } else {
+            if (i == 0) primary_sock = sock;
+        }
+
+        s_udp_socks[s_num_udp_workers] = sock;
+        if (pthread_create(&s_udp_threads[s_num_udp_workers], NULL, udp_worker_loop, &s_udp_socks[s_num_udp_workers]) == 0) {
+            s_num_udp_workers++;
+        } else {
+            if (sock != primary_sock) close(sock);
+            break;
+        }
     }
 
-    s_dns_running = true;
-    if (pthread_create(&s_dns_thread, NULL, dns_worker_loop, NULL) != 0) {
-        log_msg(LOG_LEVEL_ERROR, "Failed to create DNS engine worker thread");
-        close(s_dns_sock);
-        s_dns_sock = -1;
-        s_dns_running = false;
-        return -1;
+    log_msg(LOG_LEVEL_INFO, "PoseaFilter UDP DNS Engine active with %d worker threads on %s:%d",
+            s_num_udp_workers, g_filter.config.listen_ip[0] ? g_filter.config.listen_ip : "0.0.0.0", port);
+
+    /* Start TCP DNS Listener */
+    if (g_filter.config.enable_dns_tcp) {
+        s_tcp_sock = socket(AF_INET, SOCK_STREAM, 0);
+        if (s_tcp_sock >= 0) {
+            int opt = 1;
+            setsockopt(s_tcp_sock, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
+            if (bind(s_tcp_sock, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) == 0 &&
+                listen(s_tcp_sock, 128) == 0) {
+                if (pthread_create(&s_tcp_thread, NULL, tcp_server_loop, NULL) == 0) {
+                    log_msg(LOG_LEVEL_INFO, "PoseaFilter TCP DNS Engine active on port %d", port);
+                }
+            } else {
+                close(s_tcp_sock);
+                s_tcp_sock = -1;
+            }
+        }
     }
 
     return 0;
 }
 
 void dns_engine_stop(void) {
-    if (s_dns_running) {
-        s_dns_running = false;
-        if (s_dns_sock >= 0) {
-            close(s_dns_sock);
-            s_dns_sock = -1;
+    if (s_engine_running) {
+        s_engine_running = false;
+
+        /* Stop UDP workers */
+        for (int i = 0; i < s_num_udp_workers; i++) {
+            if (s_udp_socks[i] >= 0) {
+                close(s_udp_socks[i]);
+                s_udp_socks[i] = -1;
+            }
+            pthread_join(s_udp_threads[i], NULL);
         }
-        pthread_join(s_dns_thread, NULL);
+        s_num_udp_workers = 0;
+
+        /* Stop TCP worker */
+        if (s_tcp_sock >= 0) {
+            close(s_tcp_sock);
+            s_tcp_sock = -1;
+            pthread_join(s_tcp_thread, NULL);
+        }
+
+        if (g_filter.config.enable_dns_cache) {
+            dns_cache_cleanup();
+        }
     }
 }

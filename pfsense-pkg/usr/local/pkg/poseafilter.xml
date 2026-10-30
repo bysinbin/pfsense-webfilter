@@ -2,7 +2,7 @@
 <!DOCTYPE packagegui SYSTEM "../schema/packages.dtd">
 <packagegui>
     <name>poseafilter</name>
-    <version>1.0.0</version>
+    <version>1.1.0</version>
     <title>Services: PoseaFilter (Next-Gen UTM Web Filter)</title>
     <include_file>/usr/local/pkg/poseafilter.inc</include_file>
     <menu>
@@ -60,7 +60,7 @@
         <field>
             <fielddescr>Listen Port</fielddescr>
             <fieldname>listen_port</fieldname>
-            <description>Internal UDP listening port for transparent DNS interception (Default: 5353).</description>
+            <description>Internal UDP/TCP listening port for transparent DNS interception (Default: 5353).</description>
             <type>input</type>
             <default_value>5353</default_value>
         </field>
@@ -88,7 +88,7 @@
         <field>
             <fielddescr>Block DoH / DoT Bypass</fielddescr>
             <fieldname>block_doh</fieldname>
-            <description>Block known DNS-over-HTTPS (port 443 DoH servers) and DNS-over-TLS (port 853) to prevent client bypass.</description>
+            <description>Block known public DNS-over-HTTPS (port 443 DoH servers via &lt;poseafilter_doh_ips&gt;) and DNS-over-TLS (port 853) to prevent client bypass.</description>
             <type>checkbox</type>
             <default_value>on</default_value>
         </field>
@@ -99,6 +99,51 @@
             <type>checkbox</type>
             <default_value>on</default_value>
         </field>
+
+        <field>
+            <name>Performans &amp; Önbellek (Multi-Threading &amp; LRU DNS Cache)</name>
+            <type>listtopic</type>
+        </field>
+        <field>
+            <fielddescr>DNS İş Parçacığı Sayısı (Workers)</fielddescr>
+            <fieldname>worker_threads</fieldname>
+            <description>Eşzamanlı DNS isteklerini işleyen thread havuzu boyutu (Örn: 4 veya CPU çekirdek sayısı).</description>
+            <type>input</type>
+            <default_value>4</default_value>
+        </field>
+        <field>
+            <fielddescr>Dahili LRU DNS Önbelleği</fielddescr>
+            <fieldname>enable_dns_cache</fieldname>
+            <description>İzin verilen temiz alan adı yanıtlarını mikrosaniye hızında sunmak için RAM'de TTL duyarlı önbelleğe alır.</description>
+            <type>checkbox</type>
+            <default_value>on</default_value>
+        </field>
+        <field>
+            <fielddescr>Önbellek Kapasitesi (Kayıt)</fielddescr>
+            <fieldname>dns_cache_size</fieldname>
+            <description>RAM'de tutulacak maksimum çözümlenmiş DNS kayıt sayısı (Varsayılan: 10000).</description>
+            <type>input</type>
+            <default_value>10000</default_value>
+        </field>
+
+        <field>
+            <name>Gelişmiş Bypass Önleme (Transparent TLS SNI Filtreleme)</name>
+            <type>listtopic</type>
+        </field>
+        <field>
+            <fielddescr>Port 443 TLS SNI Denetimi</fielddescr>
+            <fieldname>enable_sni_filter</fieldname>
+            <description>İstemciler DNS'i değiştirse veya şifreli DoH kullansa dahi HTTPS bağlantısının ilk ClientHello paketindeki SNI başlığını koklar; yasaklı ise bağlantıyı kernel seviyesinde derhal keser (TCP RST).</description>
+            <type>checkbox</type>
+        </field>
+        <field>
+            <fielddescr>SNI Dinleme Portu</fielddescr>
+            <fieldname>sni_filter_port</fieldname>
+            <description>SNI denetim motoru dahili TCP dinleme portu (Varsayılan: 8444).</description>
+            <type>input</type>
+            <default_value>8444</default_value>
+        </field>
+
         <field>
             <name>SafeSearch &amp; Content Enforcement</name>
             <type>listtopic</type>
@@ -116,6 +161,7 @@
             <description>Force YouTube Restricted Mode VIP (restrict.youtube.com) to filter mature videos and comments network-wide.</description>
             <type>checkbox</type>
         </field>
+
         <field>
             <name>Kurumsal Engelleme Sayfası &amp; Özel HTML (Block Page)</name>
             <type>listtopic</type>
@@ -140,6 +186,37 @@
             <description>Varsayılan olarak boş bırakınız (pfSense LAN IP adresi otomatik kullanılır). Harici bir engelleme sunucunuz varsa IP belirtebilirsiniz.</description>
             <type>input</type>
         </field>
+
+        <field>
+            <name>High Availability (CARP / XMLRPC Senkronizasyonu)</name>
+            <type>listtopic</type>
+        </field>
+        <field>
+            <fielddescr>XMLRPC Senkronizasyonu</fielddescr>
+            <fieldname>enable_xmlrpc_sync</fieldname>
+            <description>Birincil (Primary) pfSense üzerindeki PoseaFilter kural ve ayarlarını yedek (Secondary) pfSense cihazına otomatik eşitler.</description>
+            <type>checkbox</type>
+        </field>
+        <field>
+            <fielddescr>Yedek Düğüm IP Adresi</fielddescr>
+            <fieldname>xmlrpc_sync_ip</fieldname>
+            <description>Senkronizasyon yapılacak ikincil pfSense IP adresi (Örn: 192.168.1.2 veya CARP senkronizasyon IP'si).</description>
+            <type>input</type>
+        </field>
+        <field>
+            <fielddescr>Yedek Düğüm Kullanıcı Adı</fielddescr>
+            <fieldname>xmlrpc_username</fieldname>
+            <description>İkincil cihazdaki yönetici kullanıcı adı (Varsayılan: admin).</description>
+            <type>input</type>
+            <default_value>admin</default_value>
+        </field>
+        <field>
+            <fielddescr>Yedek Düğüm Şifresi</fielddescr>
+            <fieldname>xmlrpc_password</fieldname>
+            <description>İkincil cihazdaki yönetici parolası.</description>
+            <type>password</type>
+        </field>
+
         <field>
             <name>Tehdit Bildirim ve Alarm Ayarları (Telegram)</name>
             <type>listtopic</type>

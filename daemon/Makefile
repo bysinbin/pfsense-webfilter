@@ -7,9 +7,11 @@ TARGET = poseafilterd
 SRCS = src/main.c \
        src/cJSON.c \
        src/dns_engine.c \
+       src/dns_cache.c \
        src/filter_matcher.c \
        src/bsearch_feed.c \
        src/sni_parser.c \
+       src/sni_engine.c \
        src/pf_manager.c \
        src/arp_bsd.c
 
@@ -22,6 +24,7 @@ install: $(TARGET)
 	install -d /usr/local/sbin
 	install -m 755 $(TARGET) /usr/local/sbin/$(TARGET)
 	install -d /var/etc/poseafilter
+	install -d /var/etc/poseafilter/categories
 	install -d /var/log/poseafilter
 
 clean:

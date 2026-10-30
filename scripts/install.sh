@@ -89,16 +89,30 @@ fi
 
 echo "[*] Step 2: Creating Working Directories..."
 mkdir -p /var/etc/poseafilter
+mkdir -p /var/etc/poseafilter/categories
 mkdir -p /var/log/poseafilter
 mkdir -p /var/cache/poseafilter
 chmod 750 /var/etc/poseafilter
+chmod 750 /var/etc/poseafilter/categories
 chmod 750 /var/log/poseafilter
 chmod 750 /var/cache/poseafilter
 
-echo "[*] Step 3: Installing FreeBSD rc.d Service..."
+echo "[*] Step 3: Installing FreeBSD rc.d Service & Newsyslog..."
 mkdir -p /usr/local/etc/rc.d
+mkdir -p /usr/local/etc/newsyslog.conf.d
+mkdir -p /usr/local/bin
 cp "${SCRIPT_DIR}/pfsense-pkg/etc/rc.d/poseafilter.sh" /usr/local/etc/rc.d/poseafilter.sh
 chmod 755 /usr/local/etc/rc.d/poseafilter.sh
+
+if [ -f "${SCRIPT_DIR}/pfsense-pkg/etc/newsyslog.conf.d/poseafilter.conf" ]; then
+    cp "${SCRIPT_DIR}/pfsense-pkg/etc/newsyslog.conf.d/poseafilter.conf" /usr/local/etc/newsyslog.conf.d/poseafilter.conf
+fi
+
+if [ -f "${SCRIPT_DIR}/pfsense-pkg/usr/local/bin/poseactl" ]; then
+    cp "${SCRIPT_DIR}/pfsense-pkg/usr/local/bin/poseactl" /usr/local/bin/poseactl
+    chmod 755 /usr/local/bin/poseactl
+    echo "[+] CLI tool installed: /usr/local/bin/poseactl"
+fi
 
 echo "[*] Step 4: Installing pfSense WebGUI Components..."
 mkdir -p /usr/local/pkg

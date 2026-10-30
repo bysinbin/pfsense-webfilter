@@ -38,10 +38,34 @@ if (file_exists($ad_file)) {
 // If category/reason not provided in GET, attempt quick lookup in filter.log
 if (empty($category) || empty($reason)) {
     $log_file = '/var/log/poseafilter/filter.log';
-    if (file_exists($log_file)) {
-        $lines = @file($log_file, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
-        if ($lines) {
-            $recent = array_slice($lines, -100);
+    if (file_exists($log_file) && is_readable($log_file)) {
+        $recent = [];
+        // Memory-safe: Use tail -n 100 to avoid loading multi-MB/GB log files into PHP RAM
+        if (function_exists('shell_exec')) {
+            $is_win = (strtoupper(substr(PHP_OS, 0, 3)) === 'WIN');
+            $redir = $is_win ? '2>nul' : '2>/dev/null';
+            $raw_tail = @shell_exec("tail -n 100 " . escapeshellarg($log_file) . " {$redir}");
+            if ($raw_tail !== null && $raw_tail !== false && trim($raw_tail) !== '') {
+                $recent = array_values(array_filter(explode("\n", trim($raw_tail))));
+            }
+        }
+
+        // High-performance fseek fallback if shell_exec is disabled or failed (reads only last ~25KB)
+        if (empty($recent)) {
+            $fp = @fopen($log_file, 'r');
+            if ($fp) {
+                $fsize = (int)@filesize($log_file);
+                $seek_pos = max(0, $fsize - (100 * 256));
+                fseek($fp, $seek_pos);
+                $chunk = fread($fp, max(1, $fsize - $seek_pos));
+                fclose($fp);
+                if ($chunk !== false && trim($chunk) !== '') {
+                    $recent = array_slice(array_values(array_filter(explode("\n", trim($chunk)))), -100);
+                }
+            }
+        }
+
+        if (!empty($recent)) {
             $clean_dom = preg_replace('/^www\./i', '', strtolower($domain));
             
             // Pass 1: Try finding match with exact domain

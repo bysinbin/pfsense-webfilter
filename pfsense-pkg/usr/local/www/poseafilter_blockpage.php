@@ -33,7 +33,7 @@ if ($pub_ca_crt && (!file_exists('/usr/local/www/SENER_UTM_Root_CA.crt') || @fil
 }
 
 // 1. Handle CA Certificate Download
-if (isset($_GET['act']) && $_GET['act'] === 'download_ca') {
+if ((isset($_GET['act']) && $_GET['act'] === 'download_ca') || (isset($_GET['action']) && $_GET['action'] === 'download_ca')) {
     global $config;
     $ca_crt = null;
     if (isset($config["ca"]) && is_array($config["ca"])) {

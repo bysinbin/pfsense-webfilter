@@ -71,10 +71,16 @@ void filter_save_stats(void) {
     FILE *fp = fopen(stats_path, "w");
     if (!fp) return;
 
+    uint64_t total_cache = g_filter.cache_hits + g_filter.cache_misses;
+    double cache_hit_rate = (total_cache > 0) ? ((double)g_filter.cache_hits / (double)total_cache) * 100.0 : 0.0;
+
     cJSON *root = cJSON_CreateObject();
     cJSON_AddNumberToObject(root, "total_queries", (double)g_filter.total_queries);
     cJSON_AddNumberToObject(root, "total_blocked", (double)g_filter.total_blocked);
     cJSON_AddNumberToObject(root, "total_passed", (double)g_filter.total_passed);
+    cJSON_AddNumberToObject(root, "cache_hits", (double)g_filter.cache_hits);
+    cJSON_AddNumberToObject(root, "cache_misses", (double)g_filter.cache_misses);
+    cJSON_AddNumberToObject(root, "cache_hit_rate", cache_hit_rate);
     cJSON_AddNumberToObject(root, "active_rules", g_filter.rule_count);
     cJSON_AddNumberToObject(root, "blocked_domains_count", g_filter.domain_count);
     cJSON_AddNumberToObject(root, "allowed_domains_count", g_filter.allowed_domain_count);
@@ -153,6 +159,24 @@ int filter_load_config(const char *config_dir) {
 
     item = cJSON_GetObjectItem(root, "block_page_ip");
     if (item && item->valuestring) strncpy(g_filter.config.block_page_ip, item->valuestring, sizeof(g_filter.config.block_page_ip) - 1);
+
+    item = cJSON_GetObjectItem(root, "worker_threads");
+    if (item && item->valueint > 0) g_filter.config.worker_threads = item->valueint;
+
+    item = cJSON_GetObjectItem(root, "enable_dns_tcp");
+    if (item && cJSON_IsBool(item)) g_filter.config.enable_dns_tcp = cJSON_IsTrue(item);
+
+    item = cJSON_GetObjectItem(root, "enable_dns_cache");
+    if (item && cJSON_IsBool(item)) g_filter.config.enable_dns_cache = cJSON_IsTrue(item);
+
+    item = cJSON_GetObjectItem(root, "dns_cache_size");
+    if (item && item->valueint > 0) g_filter.config.dns_cache_size = item->valueint;
+
+    item = cJSON_GetObjectItem(root, "enable_sni_filter");
+    if (item && cJSON_IsBool(item)) g_filter.config.enable_sni_filter = cJSON_IsTrue(item);
+
+    item = cJSON_GetObjectItem(root, "sni_filter_port");
+    if (item && item->valueint > 0) g_filter.config.sni_filter_port = item->valueint;
 
     pthread_mutex_unlock(&g_filter.lock);
     cJSON_Delete(root);
@@ -301,6 +325,14 @@ int filter_init(const char *config_dir) {
     strcpy(g_filter.config.log_file, "/var/log/poseafilter/filter.log");
     strcpy(g_filter.config.stats_file, "/var/log/poseafilter/stats.json");
 
+    /* Concurrency and Cache defaults */
+    g_filter.config.worker_threads = 4;
+    g_filter.config.enable_dns_tcp = true;
+    g_filter.config.enable_dns_cache = true;
+    g_filter.config.dns_cache_size = 10000;
+    g_filter.config.enable_sni_filter = false;
+    g_filter.config.sni_filter_port = 8444;
+
     /* Default Categories */
     g_filter.category_count = 0;
     const char *cats[][2] = {
@@ -319,12 +351,15 @@ int filter_init(const char *config_dir) {
         filter_category_t *fc = &g_filter.categories[g_filter.category_count++];
         strncpy(fc->name, cats[i][0], sizeof(fc->name) - 1);
         strncpy(fc->display_name, cats[i][1], sizeof(fc->display_name) - 1);
-        fc->enabled = false; /* disabled by default until configured */
+        fc->enabled = false;
     }
 
-    /* Create log and config directory */
+    /* Create directories */
     mkdir(DEFAULT_CONFIG_DIR, 0755);
     mkdir(DEFAULT_LOG_DIR, 0755);
+    char cat_dir[512];
+    snprintf(cat_dir, sizeof(cat_dir), "%s/categories", DEFAULT_CONFIG_DIR);
+    mkdir(cat_dir, 0755);
 
     filter_load_config(config_dir);
 
@@ -333,7 +368,7 @@ int filter_init(const char *config_dir) {
     snprintf(feed_path, sizeof(feed_path), "%s/feeds.txt", config_dir);
     feed_init(feed_path);
 
-    /* Initialize PF table */
+    /* Initialize PF table with async worker */
     pf_init();
 
     return 0;
@@ -342,6 +377,7 @@ int filter_init(const char *config_dir) {
 void filter_cleanup(void) {
     filter_save_stats();
     feed_cleanup();
+    pf_cleanup();
     pthread_mutex_destroy(&g_filter.lock);
 }
 
@@ -350,12 +386,19 @@ static void handle_signal(int sig) {
         log_msg(LOG_LEVEL_INFO, "Signal %d received, stopping PoseaFilter daemon...", sig);
         g_running = false;
         dns_engine_stop();
+        sni_engine_stop();
     } else if (sig == SIGHUP) {
         log_msg(LOG_LEVEL_INFO, "SIGHUP received, reloading configuration and feeds...");
         filter_load_config(s_config_dir);
+
         char feed_path[512];
         snprintf(feed_path, sizeof(feed_path), "%s/feeds.txt", s_config_dir);
         feed_reload(feed_path);
+
+        char cat_dir[512];
+        snprintf(cat_dir, sizeof(cat_dir), "%s/categories", s_config_dir);
+        feed_reload_categories(cat_dir);
+
         pf_init();
     }
 }
@@ -406,7 +449,10 @@ int main(int argc, char **argv) {
         return 1;
     }
 
-    log_msg(LOG_LEVEL_INFO, "PoseaFilter is running normally.");
+    /* Start SNI Engine if enabled */
+    sni_engine_start();
+
+    log_msg(LOG_LEVEL_INFO, "PoseaFilter is running normally with multi-threading and LRU cache.");
 
     /* Main heartbeat loop */
     int stats_ticker = 0;
@@ -418,6 +464,8 @@ int main(int argc, char **argv) {
         }
     }
 
+    sni_engine_stop();
+    dns_engine_stop();
     filter_cleanup();
     log_msg(LOG_LEVEL_INFO, "PoseaFilter daemon exited cleanly.");
     return 0;

@@ -24,7 +24,7 @@ jobs:
         run: |
           mkdir -p /tmp/freebsd-sysroot
           echo "[*] Downloading FreeBSD 14 base..."
-          wget -q https://download.freebsd.org/releases/amd64/14.4-RELEASE/base.txz -O /tmp/base.txz
+          wget -q https://archive.freebsd.org/old-releases/amd64/14.0-RELEASE/base.txz -O /tmp/base.txz
           
           echo "[*] Extracting sysroot headers and libraries..."
           tar -xf /tmp/base.txz -C /tmp/freebsd-sysroot ./usr/include ./usr/lib ./lib
@@ -43,7 +43,7 @@ jobs:
                 -L/tmp/freebsd-sysroot/usr/lib \
                 -L/tmp/freebsd-sysroot/lib \
                 -O2 -pthread -lm -Iinclude \
-                src/main.c src/cJSON.c src/dns_engine.c src/filter_matcher.c src/bsearch_feed.c src/sni_parser.c src/pf_manager.c src/arp_bsd.c \
+                src/main.c src/cJSON.c src/dns_engine.c src/dns_cache.c src/filter_matcher.c src/bsearch_feed.c src/sni_parser.c src/sni_engine.c src/pf_manager.c src/arp_bsd.c \
                 -o bin/poseafilterd
           
           strip bin/poseafilterd

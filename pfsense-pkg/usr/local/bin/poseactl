@@ -1,0 +1,219 @@
+#!/usr/local/bin/php
+<?php
+/*
+ * poseactl - PoseaFilter Command-Line Management & Diagnostic Tool for pfSense
+ * Usage:
+ *   poseactl status
+ *   poseactl stats
+ *   poseactl reload
+ *   poseactl test <client_ip> <domain>
+ *   poseactl whitelist <add|del|list> [domain]
+ *   poseactl update-feeds
+ *   poseactl live
+ */
+
+define('POSEAFILTER_CONF_DIR', '/var/etc/poseafilter');
+define('POSEAFILTER_LOG_DIR', '/var/log/poseafilter');
+define('POSEAFILTER_ACTIVE_FEED', POSEAFILTER_CONF_DIR . '/feeds.txt');
+define('POSEAFILTER_WHITELIST', POSEAFILTER_CONF_DIR . '/whitelist.txt');
+
+function color($text, $color_code) {
+    return "\033[{$color_code}m{$text}\033[0m";
+}
+
+function show_help() {
+    echo "=========================================================\n";
+    echo "  " . color("PoseaFilter CLI Management Tool (poseactl)", "1;36") . "\n";
+    echo "=========================================================\n";
+    echo "Kullanım: poseactl <komut> [parametreler]\n\n";
+    echo "Komutlar:\n";
+    echo "  " . color("status", "1;32") . "             PoseaFilter servis durumunu ve portları gösterir\n";
+    echo "  " . color("stats", "1;32") . "              Anlık sorgu, engelleme ve önbellek istatistiklerini basar\n";
+    echo "  " . color("reload", "1;32") . "             Sıfır kesintiyle kuralları ve mmap feed haritasını tazeler\n";
+    echo "  " . color("test <ip> <dom>", "1;32") . "    Belirtilen IP ve alan adı için politika simülasyonu yapar\n";
+    echo "  " . color("whitelist list", "1;32") . "     Global beyaz listeyi listeler\n";
+    echo "  " . color("whitelist add <d>", "1;32") . "  Beyaz listeye yeni alan adı ekler\n";
+    echo "  " . color("whitelist del <d>", "1;32") . "  Beyaz listeden alan adı siler\n";
+    echo "  " . color("update-feeds", "1;32") . "       USOM ve kategori listelerini anında günceller\n";
+    echo "  " . color("live", "1;32") . "               Canlı filtreleme log akışını (audit log) ekrana basar\n";
+    echo "  " . color("help", "1;32") . "               Bu yardım menüsünü görüntüler\n\n";
+}
+
+$cmd = $argv[1] ?? 'help';
+
+switch ($cmd) {
+    case 'status':
+        echo color("[*] PoseaFilter Servis Durumu:\n", "1;34");
+        $pid = null;
+        if (file_exists('/var/run/poseafilter.pid')) {
+            $pid = trim(file_get_contents('/var/run/poseafilter.pid'));
+        }
+        if (!$pid) {
+            $pid = trim(shell_exec("pgrep poseafilterd") ?? '');
+        }
+
+        if ($pid && posix_kill((int)$pid, 0)) {
+            echo "  Durum:       " . color("ÇALIŞIYOR (PID: {$pid})", "1;32") . "\n";
+        } else {
+            echo "  Durum:       " . color("DURDURULDU / ÇALIŞMIYOR", "1;31") . "\n";
+        }
+
+        $cfg_file = POSEAFILTER_CONF_DIR . '/config.json';
+        if (file_exists($cfg_file)) {
+            $cfg = json_decode(file_get_contents($cfg_file), true);
+            echo "  Listen IP:   " . ($cfg['listen_ip'] ?? '0.0.0.0') . "\n";
+            echo "  Listen Port: " . ($cfg['listen_port'] ?? 5353) . " (UDP/TCP)\n";
+            echo "  Upstream:    " . ($cfg['upstream_dns'] ?? '127.0.0.1:53') . "\n";
+            echo "  LRU Cache:   " . (!empty($cfg['enable_dns_cache']) ? "Aktif" : "Devre Dışı") . "\n";
+            echo "  TLS SNI:     " . (!empty($cfg['enable_sni_filter']) ? "Aktif (Port " . ($cfg['sni_filter_port'] ?? 8444) . ")" : "Devre Dışı") . "\n";
+        }
+        break;
+
+    case 'stats':
+        $stats_file = POSEAFILTER_LOG_DIR . '/stats.json';
+        if (file_exists($stats_file)) {
+            $s = json_decode(file_get_contents($stats_file), true);
+            echo color("=========================================================\n", "1;34");
+            echo color("  PoseaFilter Anlık İstatistikler\n", "1;36");
+            echo color("=========================================================\n", "1;34");
+            echo "  Toplam DNS Sorgusu:     " . number_format($s['total_queries'] ?? 0) . "\n";
+            echo "  Engellenen Tehditler:   " . color(number_format($s['total_blocked'] ?? 0), "1;31") . "\n";
+            echo "  İzin Verilen İstekler:  " . color(number_format($s['total_passed'] ?? 0), "1;32") . "\n";
+            echo "  LRU Cache İsabet (Hit): " . number_format($s['cache_hits'] ?? 0) . " (" . round($s['cache_hit_rate'] ?? 0, 1) . "%)\n";
+            echo "  Aktif UTM Kuralları:    " . ($s['active_rules'] ?? 0) . "\n";
+        } else {
+            echo color("[-] İstatistik dosyası henüz oluşmadı. Servisin çalıştığından emin olun.\n", "1;31");
+        }
+        break;
+
+    case 'reload':
+        echo color("[*] PoseaFilter servisine SIGHUP sinyali gönderiliyor...\n", "1;33");
+        system("/usr/bin/killall -HUP poseafilterd 2>/dev/null", $ret);
+        if ($ret === 0) {
+            echo color("[+] Sıfır kesintiyle yeniden yükleme başarılı!\n", "1;32");
+        } else {
+            echo color("[!] Servis çalışmıyor olabilir, başlatılıyor...\n", "1;33");
+            system("/usr/local/etc/rc.d/poseafilter.sh restart");
+        }
+        break;
+
+    case 'test':
+        $ip = $argv[2] ?? '';
+        $domain = strtolower(trim($argv[3] ?? ''));
+        if (!$ip || !$domain) {
+            echo "Kullanım: poseactl test <client_ip> <domain>\nÖrn: poseactl test 192.168.1.50 tiktok.com\n";
+            exit(1);
+        }
+
+        echo color("[*] Test başlatılıyor: İstemci: {$ip} | Alan Adı: {$domain}\n", "1;34");
+
+        // 1. Whitelist
+        $wl_file = POSEAFILTER_WHITELIST;
+        if (file_exists($wl_file)) {
+            $lines = file($wl_file, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+            foreach ($lines as $wl) {
+                $w = trim(strtolower($wl));
+                if ($w && ($domain === $w || str_ends_with($domain, '.' . $w))) {
+                    echo "  -> Sonuç: " . color("PASS (İzin Verildi)", "1;32") . " | Sebep: Global Beyaz Liste\n";
+                    exit(0);
+                }
+            }
+        }
+
+        // 2. Rules
+        $rules_file = POSEAFILTER_CONF_DIR . '/rules.json';
+        if (file_exists($rules_file)) {
+            $rules = json_decode(file_get_contents($rules_file), true) ?: [];
+            foreach ($rules as $r) {
+                if (empty($r['enabled'])) continue;
+                if (!empty($r['custom_allowed'])) {
+                    foreach (explode(',', strtolower($r['custom_allowed'])) as $ad) {
+                        $ad = trim($ad);
+                        if ($ad && ($domain === $ad || str_ends_with($domain, '.' . $ad))) {
+                            echo "  -> Sonuç: " . color("PASS (İzin Verildi)", "1;32") . " | Sebep: Kural '{$r['name']}' İzin\n";
+                            exit(0);
+                        }
+                    }
+                }
+                if (!empty($r['custom_blocked'])) {
+                    foreach (explode(',', strtolower($r['custom_blocked'])) as $bd) {
+                        $bd = trim($bd);
+                        if ($bd && ($domain === $bd || str_ends_with($domain, '.' . $bd))) {
+                            echo "  -> Sonuç: " . color("SINKHOLE (Engellendi)", "1;31") . " | Sebep: Kural '{$r['name']}' Engel\n";
+                            exit(0);
+                        }
+                    }
+                }
+            }
+        }
+
+        // 3. Feeds
+        $feeds_file = POSEAFILTER_ACTIVE_FEED;
+        if (file_exists($feeds_file)) {
+            $cmd = "/usr/bin/grep -xF -m 1 " . escapeshellarg($domain) . " " . escapeshellarg($feeds_file);
+            $found = trim(shell_exec($cmd) ?? '');
+            if ($found === $domain) {
+                echo "  -> Sonuç: " . color("SINKHOLE (Engellendi)", "1;31") . " | Sebep: Tehdit / USOM İstihbarat Listesi\n";
+                exit(0);
+            }
+        }
+
+        echo "  -> Sonuç: " . color("PASS (Temiz Trafik)", "1;32") . " | Herhangi bir filtreye takılmadı.\n";
+        break;
+
+    case 'whitelist':
+        $sub = $argv[2] ?? 'list';
+        $wl_file = POSEAFILTER_WHITELIST;
+        if (!file_exists($wl_file)) file_put_contents($wl_file, "");
+
+        if ($sub === 'list') {
+            echo color("[*] Global Beyaz Liste Alan Adları:\n", "1;34");
+            $lines = file($wl_file, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+            if (empty($lines)) {
+                echo "  (Liste boş)\n";
+            } else {
+                foreach ($lines as $l) {
+                    echo "  • " . htmlspecialchars(trim($l)) . "\n";
+                }
+            }
+        } elseif ($sub === 'add') {
+            $d = strtolower(trim($argv[3] ?? ''));
+            if (!$d) { echo "Lütfen alan adı girin: poseactl whitelist add domain.com\n"; exit(1); }
+            file_put_contents($wl_file, $d . "\n", FILE_APPEND);
+            echo color("[+] '{$d}' beyaz listeye eklendi.\n", "1;32");
+            system("poseactl reload");
+        } elseif ($sub === 'del') {
+            $d = strtolower(trim($argv[3] ?? ''));
+            if (!$d) { echo "Lütfen alan adı girin: poseactl whitelist del domain.com\n"; exit(1); }
+            $lines = file($wl_file, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+            $new = [];
+            foreach ($lines as $l) {
+                if (trim($l) !== $d) $new[] = trim($l);
+            }
+            file_put_contents($wl_file, implode("\n", $new) . "\n");
+            echo color("[+] '{$d}' beyaz listeden silindi.\n", "1;32");
+            system("poseactl reload");
+        }
+        break;
+
+    case 'update-feeds':
+        echo color("[*] Tehdit ve kategori feed güncellemesi başlatılıyor...\n", "1;34");
+        system("/usr/local/bin/php /usr/local/pkg/update_feeds.php");
+        break;
+
+    case 'live':
+        $log_file = POSEAFILTER_LOG_DIR . '/filter.log';
+        if (!file_exists($log_file)) {
+            echo "Log dosyası henüz oluşmadı: {$log_file}\n";
+            exit(1);
+        }
+        echo color("[*] Canlı Denetim Log Akışı Başlatıldı (Çıkış için Ctrl+C)...\n", "1;36");
+        passthru("/usr/bin/tail -n 20 -f " . escapeshellarg($log_file));
+        break;
+
+    case 'help':
+    default:
+        show_help();
+        break;
+}
+?>

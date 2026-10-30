@@ -8,20 +8,23 @@
 #include <unistd.h>
 #include "../include/poseafilter.h"
 
-int pf_init(void) {
-    if (!g_filter.config.pf_table_sync) {
-        return 0;
-    }
+#define PF_MAX_QUEUED_DOMAINS 512
+#define PF_MAX_QUEUED_IPS     2048
 
-    const char *tbl = g_filter.config.pf_table_name[0] ? g_filter.config.pf_table_name : DEFAULT_PF_TABLE;
-    char cmd[256];
-    /* Ensure table exists in pfSense */
-    snprintf(cmd, sizeof(cmd), "/sbin/pfctl -t %s -T add 127.0.0.1 >/dev/null 2>&1 && /sbin/pfctl -t %s -T delete 127.0.0.1 >/dev/null 2>&1", tbl, tbl);
-    system(cmd);
+static char s_domain_queue[PF_MAX_QUEUED_DOMAINS][128];
+static int s_domain_q_head = 0;
+static int s_domain_q_tail = 0;
+static int s_domain_q_count = 0;
 
-    log_msg(LOG_LEVEL_INFO, "PF table '%s' initialized for kernel packet filtering", tbl);
-    return 0;
-}
+static char s_ip_queue[PF_MAX_QUEUED_IPS][48];
+static int s_ip_q_head = 0;
+static int s_ip_q_tail = 0;
+static int s_ip_q_count = 0;
+
+static pthread_mutex_t s_pf_queue_lock = PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t  s_pf_queue_cond = PTHREAD_COND_INITIALIZER;
+static pthread_t       s_pf_thread;
+static volatile bool   s_pf_running = false;
 
 int pf_add_ip_to_table(const char *table, const char *ip) {
     if (!table || !ip || !*ip) return -1;
@@ -51,48 +54,147 @@ int pf_kill_states_for_ip(const char *ip) {
     return system(cmd);
 }
 
-typedef struct {
-    char domain[128];
-} resolve_task_t;
+void pf_queue_ip(const char *ip) {
+    if (!ip || !*ip || strcmp(ip, "0.0.0.0") == 0 || strcmp(ip, "127.0.0.1") == 0) return;
 
-static void *resolve_worker(void *arg) {
-    resolve_task_t *task = (resolve_task_t *)arg;
-    if (!task) return NULL;
-
-    pthread_detach(pthread_self());
-
-    struct addrinfo hints, *res, *p;
-    memset(&hints, 0, sizeof(hints));
-    hints.ai_family = AF_INET; /* IPv4 */
-    hints.ai_socktype = SOCK_STREAM;
-
-    if (getaddrinfo(task->domain, NULL, &hints, &res) == 0) {
-        const char *tbl = g_filter.config.pf_table_name[0] ? g_filter.config.pf_table_name : DEFAULT_PF_TABLE;
-        for (p = res; p != NULL; p = p->ai_next) {
-            struct sockaddr_in *ipv4 = (struct sockaddr_in *)p->ai_addr;
-            char ip_str[INET_ADDRSTRLEN];
-            inet_ntop(AF_INET, &(ipv4->sin_addr), ip_str, sizeof(ip_str));
-            if (strcmp(ip_str, "0.0.0.0") != 0 && strcmp(ip_str, "127.0.0.1") != 0) {
-                pf_add_ip_to_table(tbl, ip_str);
-            }
-        }
-        freeaddrinfo(res);
+    pthread_mutex_lock(&s_pf_queue_lock);
+    if (s_ip_q_count < PF_MAX_QUEUED_IPS) {
+        strncpy(s_ip_queue[s_ip_q_tail], ip, sizeof(s_ip_queue[0]) - 1);
+        s_ip_queue[s_ip_q_tail][sizeof(s_ip_queue[0]) - 1] = '\0';
+        s_ip_q_tail = (s_ip_q_tail + 1) % PF_MAX_QUEUED_IPS;
+        s_ip_q_count++;
     }
-
-    free(task);
-    return NULL;
+    pthread_mutex_unlock(&s_pf_queue_lock);
 }
 
 void pf_sync_domain_ips(const char *domain) {
     if (!g_filter.config.pf_table_sync || !domain || !*domain) return;
 
-    resolve_task_t *task = malloc(sizeof(resolve_task_t));
-    if (!task) return;
-    strncpy(task->domain, domain, sizeof(task->domain) - 1);
-    task->domain[sizeof(task->domain) - 1] = '\0';
+    pthread_mutex_lock(&s_pf_queue_lock);
+    if (s_domain_q_count < PF_MAX_QUEUED_DOMAINS) {
+        strncpy(s_domain_queue[s_domain_q_tail], domain, sizeof(s_domain_queue[0]) - 1);
+        s_domain_queue[s_domain_q_tail][sizeof(s_domain_queue[0]) - 1] = '\0';
+        s_domain_q_tail = (s_domain_q_tail + 1) % PF_MAX_QUEUED_DOMAINS;
+        s_domain_q_count++;
+        pthread_cond_signal(&s_pf_queue_cond);
+    }
+    pthread_mutex_unlock(&s_pf_queue_lock);
+}
 
-    pthread_t tid;
-    if (pthread_create(&tid, NULL, resolve_worker, task) != 0) {
-        free(task);
+static void *pf_batch_worker(void *arg) {
+    (void)arg;
+    log_msg(LOG_LEVEL_INFO, "PF table sync batch worker started");
+
+    while (s_pf_running) {
+        /* Sleep for 2 seconds or until signaled */
+        struct timespec ts;
+        clock_gettime(CLOCK_REALTIME, &ts);
+        ts.tv_sec += 2;
+
+        pthread_mutex_lock(&s_pf_queue_lock);
+        pthread_cond_timedwait(&s_pf_queue_cond, &s_pf_queue_lock, &ts);
+
+        char local_domains[64][128];
+        int local_domain_count = 0;
+        while (s_domain_q_count > 0 && local_domain_count < 64) {
+            strncpy(local_domains[local_domain_count++], s_domain_queue[s_domain_q_head], 127);
+            s_domain_q_head = (s_domain_q_head + 1) % PF_MAX_QUEUED_DOMAINS;
+            s_domain_q_count--;
+        }
+
+        char local_ips[128][48];
+        int local_ip_count = 0;
+        while (s_ip_q_count > 0 && local_ip_count < 128) {
+            strncpy(local_ips[local_ip_count++], s_ip_queue[s_ip_q_head], 47);
+            s_ip_q_head = (s_ip_q_head + 1) % PF_MAX_QUEUED_IPS;
+            s_ip_q_count--;
+        }
+        pthread_mutex_unlock(&s_pf_queue_lock);
+
+        /* Resolve domains to IPs */
+        for (int i = 0; i < local_domain_count && local_ip_count < 128; i++) {
+            struct addrinfo hints, *res, *p;
+            memset(&hints, 0, sizeof(hints));
+            hints.ai_family = AF_INET;
+            hints.ai_socktype = SOCK_STREAM;
+
+            if (getaddrinfo(local_domains[i], NULL, &hints, &res) == 0) {
+                for (p = res; p != NULL && local_ip_count < 128; p = p->ai_next) {
+                    struct sockaddr_in *ipv4 = (struct sockaddr_in *)p->ai_addr;
+                    char ip_str[INET_ADDRSTRLEN];
+                    inet_ntop(AF_INET, &(ipv4->sin_addr), ip_str, sizeof(ip_str));
+                    if (strcmp(ip_str, "0.0.0.0") != 0 && strcmp(ip_str, "127.0.0.1") != 0) {
+                        /* Check duplicate in local_ips */
+                        bool dup = false;
+                        for (int j = 0; j < local_ip_count; j++) {
+                            if (strcmp(local_ips[j], ip_str) == 0) {
+                                dup = true;
+                                break;
+                            }
+                        }
+                        if (!dup) {
+                            strncpy(local_ips[local_ip_count++], ip_str, 47);
+                        }
+                    }
+                }
+                freeaddrinfo(res);
+            }
+        }
+
+        /* If we have IPs, batch add them to pfctl */
+        if (local_ip_count > 0 && g_filter.config.pf_table_sync) {
+            const char *tbl = g_filter.config.pf_table_name[0] ? g_filter.config.pf_table_name : DEFAULT_PF_TABLE;
+
+            char tmp_path[64] = "/tmp/pf_batch_add.txt";
+            FILE *fp = fopen(tmp_path, "w");
+            if (fp) {
+                for (int i = 0; i < local_ip_count; i++) {
+                    fprintf(fp, "%s\n", local_ips[i]);
+                }
+                fclose(fp);
+
+                char cmd[256];
+                snprintf(cmd, sizeof(cmd), "/sbin/pfctl -t %s -T add -f %s >/dev/null 2>&1", tbl, tmp_path);
+                system(cmd);
+                unlink(tmp_path);
+            }
+        }
+    }
+
+    return NULL;
+}
+
+int pf_init(void) {
+    if (!g_filter.config.pf_table_sync) {
+        return 0;
+    }
+
+    const char *tbl = g_filter.config.pf_table_name[0] ? g_filter.config.pf_table_name : DEFAULT_PF_TABLE;
+    char cmd[256];
+    /* Ensure table exists in pfSense */
+    snprintf(cmd, sizeof(cmd), "/sbin/pfctl -t %s -T add 127.0.0.1 >/dev/null 2>&1 && /sbin/pfctl -t %s -T delete 127.0.0.1 >/dev/null 2>&1", tbl, tbl);
+    system(cmd);
+
+    /* Start batch worker if not already running */
+    if (!s_pf_running) {
+        s_pf_running = true;
+        if (pthread_create(&s_pf_thread, NULL, pf_batch_worker, NULL) != 0) {
+            s_pf_running = false;
+            log_msg(LOG_LEVEL_ERROR, "Failed to start PF batch worker thread");
+            return -1;
+        }
+    }
+
+    log_msg(LOG_LEVEL_INFO, "PF table '%s' initialized with batch processing", tbl);
+    return 0;
+}
+
+void pf_cleanup(void) {
+    if (s_pf_running) {
+        s_pf_running = false;
+        pthread_mutex_lock(&s_pf_queue_lock);
+        pthread_cond_signal(&s_pf_queue_cond);
+        pthread_mutex_unlock(&s_pf_queue_lock);
+        pthread_join(s_pf_thread, NULL);
     }
 }
